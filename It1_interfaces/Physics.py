@@ -33,6 +33,21 @@ class Physics:
         
         self.current_command = None
 
+    def copy(self):
+        """יצירת עותק של האובייקט"""
+        new_physics = Physics(self.start_cell, self.board, self.speed_m_s)
+        new_physics.current_cell = self.current_cell
+        new_physics.target_cell = self.target_cell
+        new_physics.start_time_ms = self.start_time_ms
+        new_physics.duration_ms = self.duration_ms
+        new_physics.state = self.state
+        new_physics.cooldown_start_ms = self.cooldown_start_ms
+        new_physics.cooldown_duration_ms = self.cooldown_duration_ms
+        new_physics.can_be_captured_flag = self.can_be_captured_flag
+        new_physics.can_capture_flag = self.can_capture_flag
+        new_physics.current_command = self.current_command
+        return new_physics
+
     def reset(self, cmd: Command):
         """איפוס הפיזיקה עם פקודה חדשה"""
         self.current_command = cmd
@@ -124,9 +139,15 @@ class Physics:
             self.state = "Idle"
             # שיקום יכולת האכילה רק אחרי קוד השהיה
         elif self.duration_ms and self.target_cell:
-            # חישוב מיקום ביניים
+            # חישוב מיקום ביניים - תיקון חשוב!
             ratio = min(elapsed_ms / self.duration_ms, 1.0)
-            r1, c1 = self.current_cell if isinstance(self.current_cell, tuple) else self.start_cell
+            
+            # וודא שה-current_cell הוא tuple של מספרים שלמים לפני החישוב
+            if isinstance(self.current_cell, tuple) and len(self.current_cell) == 2:
+                r1, c1 = self.current_cell
+            else:
+                r1, c1 = self.start_cell
+            
             r2, c2 = self.target_cell
             
             # חישוב מיקום רציף

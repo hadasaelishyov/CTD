@@ -15,6 +15,16 @@ class State:
         self.current_command = None
         self.state_start_time = 0
 
+    def copy(self):
+        """יצירת עותק של המצב"""
+        new_graphics = self.graphics.copy()
+        new_physics = self.physics.copy()
+        new_state = State(self.moves, new_graphics, new_physics)  # moves יכול להישתף
+        new_state.transitions = self.transitions.copy()
+        new_state.current_command = self.current_command
+        new_state.state_start_time = self.state_start_time
+        return new_state
+
     def set_transition(self, event: str, target: "State"):
         self.transitions[event] = target
 
@@ -29,7 +39,14 @@ class State:
         return (now_ms - self.state_start_time) >= min_duration
 
     def get_state_after_command(self, cmd: Command, now_ms: int) -> "State":
-        next_state = self.transitions[cmd.type]
+        # תיקון חשוב: בדיקה אם הטרנזישן קיים
+        if cmd.type not in self.transitions:
+            # אם אין טרנזישן מתאים, החזר את המצב הנוכחי עם reset
+            new_state = self.copy()
+            new_state.reset(cmd)
+            return new_state
+        
+        next_state = self.transitions[cmd.type].copy()  # תיקון: copy במקום שיתוף
         next_state.reset(cmd)
         return next_state
 

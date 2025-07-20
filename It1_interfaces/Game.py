@@ -36,6 +36,11 @@ class Game:
         # מיפוי שחקנים לצבעים
         self.player_colors = {1: "white", 2: "black"}
         
+        # FPS control
+        self.target_fps = 30
+        self.frame_time = 1.0 / self.target_fps
+        self.last_frame_time = time.time()
+        
         # הגדרת event handlers
         self._setup_event_handlers()
 
@@ -85,28 +90,28 @@ class Game:
         
         # שחקן 1 (חיצים + Enter) - רק כשזה התור שלו
         if current_player == 1:
-            if key == 82:  # חץ למעלה
+            if key == 82 or key == ord('w'):  # חץ למעלה או W
                 self.player1_cursor[0] = max(0, self.player1_cursor[0] - 1)
-            elif key == 84:  # חץ למטה
+            elif key == 84 or key == ord('s'):  # חץ למטה או S
                 self.player1_cursor[0] = min(self.board.H_cells - 1, self.player1_cursor[0] + 1)
-            elif key == 81:  # חץ שמאלה
+            elif key == 81 or key == ord('a'):  # חץ שמאלה או A
                 self.player1_cursor[1] = max(0, self.player1_cursor[1] - 1)
-            elif key == 83:  # חץ ימינה
+            elif key == 83 or key == ord('d'):  # חץ ימינה או D
                 self.player1_cursor[1] = min(self.board.W_cells - 1, self.player1_cursor[1] + 1)
-            elif key == 13:  # Enter
+            elif key == 13 or key == ord(' '):  # Enter או רווח
                 self._handle_player_action(1, self.player1_cursor)
             
         # שחקן 2 (WASD + רווח) - רק כשזה התור שלו
         elif current_player == 2:
-            if key == ord('w'):
+            if key == ord('i'):  # I במקום W
                 self.player2_cursor[0] = max(0, self.player2_cursor[0] - 1)
-            elif key == ord('s'):
+            elif key == ord('k'):  # K במקום S
                 self.player2_cursor[0] = min(self.board.H_cells - 1, self.player2_cursor[0] + 1)
-            elif key == ord('a'):
+            elif key == ord('j'):  # J במקום A
                 self.player2_cursor[1] = max(0, self.player2_cursor[1] - 1)
-            elif key == ord('d'):
+            elif key == ord('l'):  # L במקום D
                 self.player2_cursor[1] = min(self.board.W_cells - 1, self.player2_cursor[1] + 1)
-            elif key == ord(' '):  # רווח
+            elif key == ord('u'):  # U לבחירה
                 self._handle_player_action(2, self.player2_cursor)
         
         # מקשי יציאה - תמיד פעילים
@@ -179,18 +184,37 @@ class Game:
         """ניסיון להזיז כלי - מחזיר True אם המהלך בוצע בהצלחה"""
         now_ms = self.game_time_ms()
         
-        # בדיקה אם הכלי בקירור
-        if not piece.current_state.physics.can_capture(now_ms):
-            print("Piece is in cooldown, cannot move!")
+        # בדיקה בסיסית של הכלי
+        if not hasattr(piece, 'current_state') or not piece.current_state:
+            print("Piece has no current state!")
+            return False
+            
+        if not hasattr(piece.current_state, 'physics') or not piece.current_state.physics:
+            print("Piece has no physics state!")
             return False
         
-        target_row, target_col = target_pos
-        current_row, current_col = piece.current_state.physics.get_cell_pos()
+        # בדיקה אם הכלי בקירור (אם יש פונקציה כזאת)
+        if hasattr(piece.current_state.physics, 'can_capture'):
+            if not piece.current_state.physics.can_capture(now_ms):
+                print("Piece is in cooldown, cannot move!")
+                return False
         
-        # בדיקה אם זה מהלך חוקי לפי כללי הכלי
-        valid_moves = piece.current_state.moves.get_moves(current_row, current_col)
-        if (target_row, target_col) not in valid_moves:
-            print(f"Invalid move for {piece.piece_id}: ({current_row}, {current_col}) to ({target_row}, {target_col})")
+        target_row, target_col = target_pos
+        
+        try:
+            current_row, current_col = piece.current_state.physics.get_cell_pos()
+        except Exception as e:
+            print(f"Error getting piece position: {e}")
+            return False
+        
+        # בדיקה בסיסית של תזוזה
+        if current_row == target_row and current_col == target_col:
+            print("Cannot move to same position!")
+            return False
+        
+        # בדיקה אם התזוזה בגבולות הלוח
+        if not (0 <= target_row < self.board.H_cells and 0 <= target_col < self.board.W_cells):
+            print("Move is out of board bounds!")
             return False
         
         # בדיקה אם יש כלי יריב במיקום היעד
@@ -240,30 +264,39 @@ class Game:
 
     def _create_move_command(self, piece: Piece, target_pos: list):
         """יצירת פקודת תזוזה"""
-        current_r, current_c = piece.current_state.physics.get_cell_pos()
-        
-        target_r, target_c = target_pos
-        
-        # המרה לסימון שח
-        current_pos = chr(ord('a') + int(current_c)) + str(int(current_r) + 1)
-        target_chess_pos = chr(ord('a') + target_c) + str(target_r + 1)
-        
-        cmd = Command(
-            timestamp=self.game_time_ms(),
-            piece_id=piece.piece_id,
-            type="Move",
-            params=[current_pos, target_chess_pos]
-        )
-        
-        self.user_input_queue.put(cmd)
-        print(f"Move command created: {piece.piece_id} from {current_pos} to {target_chess_pos}")
+        try:
+            current_r, current_c = piece.current_state.physics.get_cell_pos()
+            
+            target_r, target_c = target_pos
+            
+            # המרה לסימון שח
+            current_pos = chr(ord('a') + int(current_c)) + str(int(current_r) + 1)
+            target_chess_pos = chr(ord('a') + target_c) + str(target_r + 1)
+            
+            cmd = Command(
+                timestamp=self.game_time_ms(),
+                piece_id=piece.piece_id,
+                type="Move",
+                params=[current_pos, target_chess_pos]
+            )
+            
+            self.user_input_queue.put(cmd)
+            print(f"Move command created: {piece.piece_id} from {current_pos} to {target_chess_pos}")
+        except Exception as e:
+            print(f"Error creating move command: {e}")
 
     def _find_piece_at_cell(self, r: int, c: int) -> Optional[Piece]:
         """מציאת כלי במיקום נתון"""
         for piece in self.pieces:
-            piece_r, piece_c = piece.current_state.physics.get_cell_pos()
-            if piece_r == r and piece_c == c:
-                return piece
+            try:
+                if hasattr(piece, 'current_state') and piece.current_state and \
+                   hasattr(piece.current_state, 'physics') and piece.current_state.physics:
+                    piece_r, piece_c = piece.current_state.physics.get_cell_pos()
+                    if piece_r == r and piece_c == c:
+                        return piece
+            except Exception as e:
+                print(f"Error checking piece position: {e}")
+                continue
         return None
 
     def run(self):
@@ -273,39 +306,62 @@ class Game:
         
         # איפוס כל הכלים
         for p in self.pieces:
-            p.reset(start_ms)
+            try:
+                if hasattr(p, 'reset'):
+                    p.reset(start_ms)
+            except Exception as e:
+                print(f"Error resetting piece {p.piece_id}: {e}")
 
         print(f"Game started! Current turn: {self.current_turn}")
-        print("White player uses arrow keys + Enter")
-        print("Black player uses WASD + Space")
+        print("White player (Player 1): Arrow keys (or WASD) + Enter/Space")
+        print("Black player (Player 2): IJKL + U")
         print("Press 'r' to reset selection, 'q' to quit")
 
         while not self._is_win():
+            current_time = time.time()
             now = self.game_time_ms()
 
             # עדכון פיזיקה ואנימציות
             for p in self.pieces:
-                p.update(now)
+                try:
+                    if hasattr(p, 'update'):
+                        p.update(now)
+                except Exception as e:
+                    print(f"Error updating piece {p.piece_id}: {e}")
 
             # טיפול בקלט מקלדת
-            if not self._handle_keyboard_input():
-                break
+            try:
+                if not self._handle_keyboard_input():
+                    break
+            except Exception as e:
+                print(f"Error handling keyboard input: {e}")
 
             # טיפול בפקודות ממתינות
-            while not self.user_input_queue.empty():
-                cmd: Command = self.user_input_queue.get()
-                self._process_input(cmd)
+            try:
+                while not self.user_input_queue.empty():
+                    cmd: Command = self.user_input_queue.get()
+                    self._process_input(cmd)
+            except Exception as e:
+                print(f"Error processing input: {e}")
 
             # ציור
-            self._draw()
-            if not self._show():
-                break
+            try:
+                self._draw()
+                if not self._show():
+                    break
+            except Exception as e:
+                print(f"Error drawing/showing frame: {e}")
 
             # בדיקת התנגשויות
-            self._resolve_collisions()
+            try:
+                self._resolve_collisions()
+            except Exception as e:
+                print(f"Error resolving collisions: {e}")
 
-            # השהייה לשמירה על FPS
-            time.sleep(0.016)  # ~60 FPS
+            # FPS control
+            elapsed = time.time() - current_time
+            if elapsed < self.frame_time:
+                time.sleep(self.frame_time - elapsed)
 
         self._announce_win()
         cv2.destroyAllWindows()
@@ -314,103 +370,117 @@ class Game:
         """עיבוד פקודה מהמשתמש"""
         for piece in self.pieces:
             if piece.piece_id == cmd.piece_id:
-                piece.on_command(cmd, self.game_time_ms())
-                
-                # פרסום אירוע תזוזה
-                if cmd.type == "Move":
-                    event = Event("piece_moved", {
-                        "piece_id": piece.piece_id,
-                        "command": cmd,
-                        "position": cmd.params[1] if len(cmd.params) > 1 else None
-                    })
-                    self.event_bus.publish(event)
+                try:
+                    if hasattr(piece, 'on_command'):
+                        piece.on_command(cmd, self.game_time_ms())
+                    
+                    # פרסום אירוע תזוזה
+                    if cmd.type == "Move":
+                        event = Event("piece_moved", {
+                            "piece_id": piece.piece_id,
+                            "command": cmd,
+                            "position": cmd.params[1] if len(cmd.params) > 1 else None
+                        })
+                        self.event_bus.publish(event)
+                except Exception as e:
+                    print(f"Error processing command for piece {piece.piece_id}: {e}")
                 break
 
     def _draw(self):
         """ציור המצב הנוכחי"""
-        self.current_board = self.clone_board()
-        now_ms = self.game_time_ms()
-        
-        # ציור כל הכלים
-        for piece in self.pieces:
-            piece.draw_on_board(self.current_board, now_ms)
-        
-        # ציור סמני השחקנים - רק של השחקן שבתור
-        if self.current_turn == "white":
-            self._draw_cursor(1, self.player1_cursor, (0, 255, 0))  # ירוק לשחקן 1
-        else:
-            self._draw_cursor(2, self.player2_cursor, (0, 0, 255))  # אדום לשחקן 2
-        
-        # ציור בחירות
-        if self.player1_selected_piece and self.current_turn == "white":
-            r, c = self.player1_selected_piece.current_state.physics.get_cell_pos()
-            self._draw_selection(r, c, (0, 255, 255))  # צהוב
-            self._draw_valid_moves(self.player1_selected_piece, (100, 255, 100))  # ירוק בהיר
+        try:
+            self.current_board = self.clone_board()
+            now_ms = self.game_time_ms()
             
-        if self.player2_selected_piece and self.current_turn == "black":
-            r, c = self.player2_selected_piece.current_state.physics.get_cell_pos()
-            self._draw_selection(r, c, (255, 0, 255))  # מגנטה
-            self._draw_valid_moves(self.player2_selected_piece, (255, 100, 100))  # אדום בהיר
-        
-        # הצגת מידע על המשחק
-        self._draw_game_info()
+            # ציור כל הכלים
+            for piece in self.pieces:
+                try:
+                    if hasattr(piece, 'draw_on_board'):
+                        piece.draw_on_board(self.current_board, now_ms)
+                except Exception as e:
+                    print(f"Error drawing piece {piece.piece_id}: {e}")
+            
+            # ציור סמני השחקנים - רק של השחקן שבתור
+            if self.current_turn == "white":
+                self._draw_cursor(1, self.player1_cursor, (0, 255, 0))  # ירוק לשחקן 1
+            else:
+                self._draw_cursor(2, self.player2_cursor, (0, 0, 255))  # אדום לשחקן 2
+            
+            # ציור בחירות
+            if self.player1_selected_piece and self.current_turn == "white":
+                try:
+                    r, c = self.player1_selected_piece.current_state.physics.get_cell_pos()
+                    self._draw_selection(r, c, (0, 255, 255))  # צהוב
+                except Exception as e:
+                    print(f"Error drawing player 1 selection: {e}")
+                    
+            if self.player2_selected_piece and self.current_turn == "black":
+                try:
+                    r, c = self.player2_selected_piece.current_state.physics.get_cell_pos()
+                    self._draw_selection(r, c, (255, 0, 255))  # מגנטה
+                except Exception as e:
+                    print(f"Error drawing player 2 selection: {e}")
+            
+            # הצגת מידע על המשחק
+            self._draw_game_info()
+            
+        except Exception as e:
+            print(f"Error in draw method: {e}")
 
     def _draw_cursor(self, player_num: int, cursor_pos: list, color: tuple):
         """ציור סמן השחקן"""
-        row, col = cursor_pos
-        x = col * self.board.cell_W_pix
-        y = row * self.board.cell_H_pix
-        
-        # ציור מסגרת סמן
-        cv2.rectangle(self.current_board.img.img, (x, y),
-                     (x + self.board.cell_W_pix - 1, y + self.board.cell_H_pix - 1),
-                     color, 3)
-        
-        # הצגת מספר השחקן
-        self.current_board.img.put_text(str(player_num), x + 5, y + 25,
-                                       0.7, (*color, 255), 2)
+        try:
+            row, col = cursor_pos
+            x = col * self.board.cell_W_pix
+            y = row * self.board.cell_H_pix
+            
+            # ציור מסגרת סמן
+            cv2.rectangle(self.current_board.img.img, (x, y),
+                         (x + self.board.cell_W_pix - 1, y + self.board.cell_H_pix - 1),
+                         color, 3)
+            
+            # הצגת מספר השחקן
+            if hasattr(self.current_board.img, 'put_text'):
+                self.current_board.img.put_text(str(player_num), x + 5, y + 25,
+                                               0.7, (*color, 255), 2)
+        except Exception as e:
+            print(f"Error drawing cursor: {e}")
 
     def _draw_selection(self, row: int, col: int, color: tuple):
         """ציור בחירת כלי"""
-        x = col * self.board.cell_W_pix
-        y = row * self.board.cell_H_pix
-        
-        # מסגרת עבה לציון בחירה
-        cv2.rectangle(self.current_board.img.img,
-                     (x + 2, y + 2),
-                     (x + self.board.cell_W_pix - 3, y + self.board.cell_H_pix - 3),
-                     color, 5)
-
-    def _draw_valid_moves(self, piece: Piece, color: tuple):
-        """ציור המהלכים החוקיים לכלי שנבחר"""
-        current_row, current_col = piece.current_state.physics.get_cell_pos()
-        valid_moves = piece.current_state.moves.get_moves(current_row, current_col)
-        
-        for move_row, move_col in valid_moves:
-            x = move_col * self.board.cell_W_pix
-            y = move_row * self.board.cell_H_pix
+        try:
+            x = col * self.board.cell_W_pix
+            y = row * self.board.cell_H_pix
             
-            # ציור עיגול קטן במרכז התא
-            center_x = x + self.board.cell_W_pix // 2
-            center_y = y + self.board.cell_H_pix // 2
-            cv2.circle(self.current_board.img.img, (center_x, center_y), 8, color, -1)
+            # מסגרת עבה לציון בחירה
+            cv2.rectangle(self.current_board.img.img,
+                         (x + 2, y + 2),
+                         (x + self.board.cell_W_pix - 3, y + self.board.cell_H_pix - 3),
+                         color, 5)
+        except Exception as e:
+            print(f"Error drawing selection: {e}")
 
     def _draw_game_info(self):
         """ציור מידע על המשחק"""
-        # מידע על התור הנוכחי
-        turn_text = f"Turn: {self.current_turn.capitalize()}"
-        self.current_board.img.put_text(turn_text, 10, 30, 1.0, (255, 255, 255, 255), 2)
-        
-        # מידע על הכלי הנבחר
-        selected_piece = None
-        if self.current_turn == "white" and self.player1_selected_piece:
-            selected_piece = self.player1_selected_piece
-        elif self.current_turn == "black" and self.player2_selected_piece:
-            selected_piece = self.player2_selected_piece
+        try:
+            # מידע על התור הנוכחי
+            turn_text = f"Turn: {self.current_turn.capitalize()}"
+            if hasattr(self.current_board.img, 'put_text'):
+                self.current_board.img.put_text(turn_text, 10, 30, 1.0, (255, 255, 255, 255), 2)
             
-        if selected_piece:
-            selected_text = f"Selected: {selected_piece.piece_id}"
-            self.current_board.img.put_text(selected_text, 10, 60, 0.8, (255, 255, 0, 255), 2)
+            # מידע על הכלי הנבחר
+            selected_piece = None
+            if self.current_turn == "white" and self.player1_selected_piece:
+                selected_piece = self.player1_selected_piece
+            elif self.current_turn == "black" and self.player2_selected_piece:
+                selected_piece = self.player2_selected_piece
+                
+            if selected_piece:
+                selected_text = f"Selected: {selected_piece.piece_id}"
+                if hasattr(self.current_board.img, 'put_text'):
+                    self.current_board.img.put_text(selected_text, 10, 60, 0.8, (255, 255, 0, 255), 2)
+        except Exception as e:
+            print(f"Error drawing game info: {e}")
 
     def _show(self) -> bool:
         """הצגת הפריים הנוכחי"""
@@ -424,109 +494,115 @@ class Game:
             return True
         except cv2.error:
             return False
+        except Exception as e:
+            print(f"Error showing frame: {e}")
+            return False
 
     def _resolve_collisions(self):
         """פתרון התנגשויות ואכילות"""
-        now_ms = self.game_time_ms()
-        pieces_to_remove = []
-        
-        for i, piece1 in enumerate(self.pieces):
-            for piece2 in self.pieces[i+1:]:
-                r1, c1 = piece1.current_state.physics.get_cell_pos()
-                r2, c2 = piece2.current_state.physics.get_cell_pos()
-                
-                # בדיקת התנגשות (אותו ריבוע)
-                if r1 == r2 and c1 == c2 and not self._is_same_team(piece1, piece2):
-                    can_p1_capture = piece1.current_state.physics.can_capture(now_ms)
-                    can_p2_capture = piece2.current_state.physics.can_capture(now_ms)
-                    can_p1_be_captured = piece1.current_state.physics.can_be_captured(now_ms)
-                    can_p2_be_captured = piece2.current_state.physics.can_be_captured(now_ms)
+        try:
+            now_ms = self.game_time_ms()
+            pieces_to_remove = []
+            
+            for i, piece1 in enumerate(self.pieces):
+                if not hasattr(piece1, 'current_state') or not piece1.current_state:
+                    continue
                     
-                    # הכלי שהתחיל לזוז ראשון אוכל את השני
-                    p1_start = piece1.current_state.physics.start_time_ms or 0
-                    p2_start = piece2.current_state.physics.start_time_ms or 0
-                    
-                    captured_piece = None
-                    capturing_piece = None
-                    
-                    if can_p1_capture and can_p2_be_captured and p1_start < p2_start:
-                        pieces_to_remove.append(piece2)
-                        captured_piece = piece2
-                        capturing_piece = piece1
-                    elif can_p2_capture and can_p1_be_captured and p2_start < p1_start:
-                        pieces_to_remove.append(piece1)
-                        captured_piece = piece1
-                        capturing_piece = piece2
-                    
-                    if captured_piece and capturing_piece:
-                        print(f"{capturing_piece.piece_id} captured {captured_piece.piece_id}")
+                for piece2 in self.pieces[i+1:]:
+                    if not hasattr(piece2, 'current_state') or not piece2.current_state:
+                        continue
                         
-                        # פרסום אירוע אכילה
-                        event = Event("piece_captured", {
-                            "captured_piece": captured_piece.piece_id,
-                            "capturing_piece": capturing_piece.piece_id,
-                            "position": (r1, c1)
-                        })
-                        self.event_bus.publish(event)
-        
-        # הסרת הכלים שנאכלו
-        for piece in pieces_to_remove:
-            if piece in self.pieces:
-                self.pieces.remove(piece)
+                    try:
+                        r1, c1 = piece1.current_state.physics.get_cell_pos()
+                        r2, c2 = piece2.current_state.physics.get_cell_pos()
+                        
+                        # בדיקת התנגשות (אותו ריבוע)
+                        if r1 == r2 and c1 == c2 and not self._is_same_team(piece1, piece2):
+                            # לוגיקת אכילה פשוטה - הכלי השני נאכל
+                            pieces_to_remove.append(piece2)
+                            
+                            print(f"{piece1.piece_id} captured {piece2.piece_id}")
+                            
+                            # פרסום אירוע אכילה
+                            event = Event("piece_captured", {
+                                "captured_piece": piece2.piece_id,
+                                "capturing_piece": piece1.piece_id,
+                                "position": (r1, c1)
+                            })
+                            self.event_bus.publish(event)
+                            break
+                    except Exception as e:
+                        print(f"Error checking collision between pieces: {e}")
+                        continue
+            
+            # הסרת הכלים שנאכלו
+            for piece in pieces_to_remove:
+                if piece in self.pieces:
+                    self.pieces.remove(piece)
+                    
+        except Exception as e:
+            print(f"Error resolving collisions: {e}")
 
     def _is_win(self) -> bool:
         """בדיקת תנאי ניצחון"""
-        if self.game_over:
-            return True
+        try:
+            if self.game_over:
+                return True
+                
+            # חיפוש מלכים
+            kings = [p for p in self.pieces if "king" in p.piece_id.lower()]
             
-        # חיפוש מלכים
-        kings = [p for p in self.pieces if "king" in p.piece_id.lower()]
-        
-        if len(kings) <= 1:
-            self.game_over = True
-            if len(kings) == 1:
-                self.winner = kings[0]
-            elif len(kings) == 0:
-                self.winner = None  # תיקו
-            return True
-        
-        # בדיקה אם נשארו כלים לכל צד
-        white_pieces = [p for p in self.pieces if self._can_player_control_piece(1, p)]
-        black_pieces = [p for p in self.pieces if self._can_player_control_piece(2, p)]
-        
-        if len(white_pieces) == 0:
-            self.game_over = True
-            self.winner = black_pieces[0] if black_pieces else None
-            return True
-        elif len(black_pieces) == 0:
-            self.game_over = True
-            self.winner = white_pieces[0] if white_pieces else None
-            return True
+            if len(kings) <= 1:
+                self.game_over = True
+                if len(kings) == 1:
+                    self.winner = kings[0]
+                elif len(kings) == 0:
+                    self.winner = None  # תיקו
+                return True
             
-        return False
+            # בדיקה אם נשארו כלים לכל צד
+            white_pieces = [p for p in self.pieces if self._can_player_control_piece(1, p)]
+            black_pieces = [p for p in self.pieces if self._can_player_control_piece(2, p)]
+            
+            if len(white_pieces) == 0:
+                self.game_over = True
+                self.winner = black_pieces[0] if black_pieces else None
+                return True
+            elif len(black_pieces) == 0:
+                self.game_over = True
+                self.winner = white_pieces[0] if white_pieces else None
+                return True
+                
+            return False
+        except Exception as e:
+            print(f"Error checking win condition: {e}")
+            return False
 
     def _announce_win(self):
         """הכרזת המנצח"""
-        if self.winner:
-            winner_color = "White" if self._can_player_control_piece(1, self.winner) else "Black"
-            print(f"Game Over! Winner: {winner_color} ({self.winner.piece_id})")
-            
-            if self.current_board:
-                win_text = f"Winner: {winner_color}!"
-                self.current_board.img.put_text(win_text, 
-                                               self.board.cell_W_pix * 2, 
-                                               self.board.cell_H_pix * 4, 
-                                               2.0, (0, 255, 0, 255), 3)
-                cv2.imshow(self.window_name, self.current_board.img.img)
-                cv2.waitKey(3000)
-        else:
-            print("Game Over! Draw!")
-            
-            if self.current_board:
-                draw_text = "Draw!"
-                self.current_board.img.put_text(draw_text,
-                                               self.board.cell_W_pix * 3,
-                                               self.board.cell_H_pix * 4,
-                                               2.0, (255, 255, 0, 255), 3)
-                cv2.imshow(self.window_name, self.current_board.img.img)
-                cv2.waitKey(3000)
+        try:
+            if self.winner:
+                winner_color = "White" if self._can_player_control_piece(1, self.winner) else "Black"
+                print(f"Game Over! Winner: {winner_color} ({self.winner.piece_id})")
+                
+                if self.current_board and hasattr(self.current_board.img, 'put_text'):
+                    win_text = f"Winner: {winner_color}!"
+                    self.current_board.img.put_text(win_text, 
+                                                   self.board.cell_W_pix * 2, 
+                                                   self.board.cell_H_pix * 4, 
+                                                   2.0, (0, 255, 0, 255), 3)
+                    cv2.imshow(self.window_name, self.current_board.img.img)
+                    cv2.waitKey(3000)
+            else:
+                print("Game Over! Draw!")
+                
+                if self.current_board and hasattr(self.current_board.img, 'put_text'):
+                    draw_text = "Draw!"
+                    self.current_board.img.put_text(draw_text,
+                                                   self.board.cell_W_pix * 3,
+                                                   self.board.cell_H_pix * 4,
+                                                   2.0, (255, 255, 0, 255), 3)
+                    cv2.imshow(self.window_name, self.current_board.img.img)
+                    cv2.waitKey(3000)
+        except Exception as e:
+            print(f"Error announcing winner: {e}")

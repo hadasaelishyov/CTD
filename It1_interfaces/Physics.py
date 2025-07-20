@@ -1,115 +1,211 @@
 from typing import Tuple, Optional
 from Command import Command
-from Board import Board  # Import the Board class
+from Board import Board
 import math
+
+
 class Physics:
     SLIDE_CELLS_PER_SEC = 4.0 
 
-    def __init__(self, start_cell: Tuple[int, int], board: "Board", speed_m_s: float = 1.0):
+    def __init__(self, start_cell: Tuple[int, int], board: Board, speed_m_s: float = 1.0):
         self.board = board
         self.speed_m_s = speed_m_s
-        self.start_cell = start_cell
-        self.current_cell = start_cell
+        
+        # תיקון: שמירת המיקום ההתחלתי כטופל של מספרים שלמים
+        self.start_cell = tuple(start_cell)
+        self.current_cell = tuple(start_cell)
+        
+        # משתנים לתזוזה
         self.target_cell: Optional[Tuple[int, int]] = None
         self.start_time_ms: Optional[int] = None
         self.duration_ms: Optional[int] = None
+        
+        # ניהול מצבים
         self.state = "Idle"
+        
+        # ניהול קוד השהיה
+        self.cooldown_start_ms = 0
+        self.cooldown_duration_ms = 0
+        
+        # יכולות אכילה
+        self.can_be_captured_flag = True
+        self.can_capture_flag = True
+        
+        self.current_command = None
+
+    def reset(self, cmd: Command):
+        """איפוס הפיזיקה עם פקודה חדשה"""
+        self.current_command = cmd
+        self.start_time_ms = cmd.timestamp
+        
+        # איפוס מצב תנועה
+        self.target_cell = None
+        self.duration_ms = None
+        self.state = "Idle"
+        
+        # איפוס קוד השהיה
         self.cooldown_start_ms = 0
         self.cooldown_duration_ms = 0
         self.can_be_captured_flag = True
         self.can_capture_flag = True
-        self.current_command = None
-
-    def reset(self, cmd: Command):
-        self.current_command = cmd
-        self.start_time_ms = cmd.timestamp
-
-        self.target_cell = None
-        self.duration_ms = None
         
         if cmd.type == "Move" and len(cmd.params) >= 2:
-            start_pos = self._parse_position(cmd.params[0])
-            target_pos = self._parse_position(cmd.params[1])
-            
-            if start_pos and target_pos:
-                self.current_cell = start_pos
-                self.target_cell = target_pos
-                
-                distance = math.sqrt((target_pos[0] - start_pos[0])**2 + (target_pos[1] - start_pos[1])**2)
-                self.duration_ms = int((distance / self.SLIDE_CELLS_PER_SEC) * 1000)
-                self.state = "Moving"
-                self.can_be_captured_flag = False
-                
-                # קוד השהיה אחרי הסיום
-                self.cooldown_start_ms = cmd.timestamp + self.duration_ms
-                self.cooldown_duration_ms = 2000  # 2 שניות כמו שביקשת
-        
+            self._handle_move_command(cmd)
         elif cmd.type == "Jump":
-            self.state = "Jumping"
-            self.duration_ms = 1000  # שנייה אחת כמו שביקשת
-            self.cooldown_start_ms = cmd.timestamp
-            self.cooldown_duration_ms = 1000
-            self.can_be_captured_flag = False  # במהלך קפיצה לא ניתן לאכול
-            self.can_capture_flag = False  # במהלך קפיצה לא ניתן לאכול אחרים
+            self._handle_jump_command(cmd)
+
+    def _handle_move_command(self, cmd: Command):
+        """טיפול בפקודת תזוזה"""
+        start_pos = self._parse_position(cmd.params[0])
+        target_pos = self._parse_position(cmd.params[1])
+        
+        if start_pos and target_pos:
+            self.current_cell = start_pos
+            self.target_cell = target_pos
+            
+            # חישוב משך התזוזה על בסיס המרחק
+            distance = math.sqrt((target_pos[0] - start_pos[0])**2 + (target_pos[1] - start_pos[1])**2)
+            self.duration_ms = int((distance / self.SLIDE_CELLS_PER_SEC) * 1000)
+            
+            self.state = "Moving"
+            self.can_be_captured_flag = False  # במהלך תזוזה לא ניתן לאכילה
+            
+            # הגדרת קוד השהיה אחרי סיום התזוזה
+            self.cooldown_start_ms = cmd.timestamp + self.duration_ms
+            self.cooldown_duration_ms = 2000  # שתי שניות
+            
+    def _handle_jump_command(self, cmd: Command):
+        """טיפול בפקודת קפיצה"""
+        self.state = "Jumping"
+        self.duration_ms = 1000  # שנייה אחת
+        
+        # במהלך קפיצה הכלי לא יכול לאכול או להיאכל
+        self.can_be_captured_flag = False
+        self.can_capture_flag = False
+        
+        # קוד השהיה מתחיל מיד
+        self.cooldown_start_ms = cmd.timestamp
+        self.cooldown_duration_ms = 1000  # שנייה אחת
     
     def _parse_position(self, pos_str: str) -> Optional[Tuple[int, int]]:
-        if len(pos_str) != 2:
+        """המרת מחרוזת מיקום (כמו 'e2') לקואורדינטות"""
+        if not isinstance(pos_str, str) or len(pos_str) != 2:
             return None
         
-        col = ord(pos_str[0].lower()) - ord('a')
-        row = int(pos_str[1]) - 1
+        try:
+            col = ord(pos_str[0].lower()) - ord('a')
+            row = int(pos_str[1]) - 1
+            
+            if 0 <= col < self.board.W_cells and 0 <= row < self.board.H_cells:
+                return (row, col)
+        except (ValueError, IndexError):
+            pass
         
-        if 0 <= col < self.board.W_cells and 0 <= row < self.board.H_cells:
-            return (row, col)
         return None
 
     def update(self, now_ms: int):
+        """עדכון מצב הפיזיקה"""
         if self.start_time_ms is None:
             return
             
-        if self.state == "Moving" and self.current_command:
-            elapsed_ms = now_ms - self.start_time_ms
-            
-            if elapsed_ms >= self.duration_ms:
-                # תזוזה הסתיימה
-                self.current_cell = self.target_cell
-                self.state = "Idle"
-                self.can_be_captured_flag = True
-                self.can_capture_flag = True
-            else:
-                # עדיין בתזוזה - חישוב מיקום ביניים
-                ratio = elapsed_ms / self.duration_ms
-                r1, c1 = self.current_cell if hasattr(self.current_cell, '__iter__') else self.start_cell
-                r2, c2 = self.target_cell
-                cr = r1 + (r2 - r1) * ratio
-                cc = c1 + (c2 - c1) * ratio
-                self.current_cell = (cr, cc)
-                
+        elapsed_ms = now_ms - self.start_time_ms
+        
+        if self.state == "Moving":
+            self._update_movement(elapsed_ms)
         elif self.state == "Jumping":
-            elapsed_ms = now_ms - self.start_time_ms
-            if elapsed_ms >= self.duration_ms:
-                self.state = "Idle"
-                self.can_be_captured_flag = True
-                self.can_capture_flag = True 
+            self._update_jump(elapsed_ms)
+
+    def _update_movement(self, elapsed_ms: int):
+        """עדכון תזוזה"""
+        if self.duration_ms and elapsed_ms >= self.duration_ms:
+            # התזוזה הסתיימה
+            if self.target_cell:
+                self.current_cell = self.target_cell
+            self.state = "Idle"
+            # שיקום יכולת האכילה רק אחרי קוד השהיה
+        elif self.duration_ms and self.target_cell:
+            # חישוב מיקום ביניים
+            ratio = min(elapsed_ms / self.duration_ms, 1.0)
+            r1, c1 = self.current_cell if isinstance(self.current_cell, tuple) else self.start_cell
+            r2, c2 = self.target_cell
+            
+            # חישוב מיקום רציף
+            cr = r1 + (r2 - r1) * ratio
+            cc = c1 + (c2 - c1) * ratio
+            self.current_cell = (cr, cc)
+
+    def _update_jump(self, elapsed_ms: int):
+        """עדכון קפיצה"""
+        if self.duration_ms and elapsed_ms >= self.duration_ms:
+            self.state = "Idle"
+            # שיקום יכולות אחרי קוד השהיה
 
     def can_be_captured(self, now_ms: int) -> bool:
-        return self.can_be_captured_flag and not self._is_in_cooldown(now_ms)
+        """בדיקה האם הכלי יכול להיאכל"""
+        if not self.can_be_captured_flag:
+            return False
+        return not self._is_in_cooldown(now_ms)
         
     def can_capture(self, now_ms: int) -> bool:
-        return self.can_capture_flag and not self._is_in_cooldown(now_ms)
+        """בדיקה האם הכלי יכול לאכול"""
+        if not self.can_capture_flag:
+            return False
+        return not self._is_in_cooldown(now_ms)
     
     def _is_in_cooldown(self, now_ms: int) -> bool:
+        """בדיקת קוד השהיה"""
         if self.cooldown_start_ms == 0:
             return False
         return now_ms < (self.cooldown_start_ms + self.cooldown_duration_ms)
 
     def get_pos(self) -> Tuple[float, float]:
-        """החזרת המיקום המדויק (לא מעוגל) לחישובי ציור"""
+        """קבלת המיקום המדויק (לא מעוגל) לחישובי ציור"""
         if isinstance(self.current_cell, tuple) and len(self.current_cell) == 2:
-            return self.current_cell
+            return (float(self.current_cell[0]), float(self.current_cell[1]))
         return (0.0, 0.0)
     
     def get_cell_pos(self) -> Tuple[int, int]:
-        """החזרת המיקום המעוגל לבדיקת התנגשויות"""
+        """קבלת המיקום המעוגל לבדיקת התנגשויות"""
         r, c = self.get_pos()
         return (round(r), round(c))
+    
+    def get_state(self) -> str:
+        """קבלת המצב הנוכחי"""
+        return self.state
+    
+    def is_moving(self) -> bool:
+        """בדיקה האם הכלי בתנועה"""
+        return self.state in ["Moving", "Jumping"]
+    
+    def get_progress(self, now_ms: int) -> float:
+        """קבלת אחוז ההתקדמות של הפעולה הנוכחית (0.0-1.0)"""
+        if self.start_time_ms is None or self.duration_ms is None:
+            return 1.0
+            
+        elapsed_ms = now_ms - self.start_time_ms
+        return min(elapsed_ms / self.duration_ms, 1.0)
+    
+    def get_cooldown_progress(self, now_ms: int) -> float:
+        """קבלת אחוז ההתקדמות של קוד השהיה (0.0-1.0)"""
+        if not self._is_in_cooldown(now_ms):
+            return 1.0
+            
+        elapsed = now_ms - self.cooldown_start_ms
+        return min(elapsed / self.cooldown_duration_ms, 1.0)
+    
+    def set_position(self, cell: Tuple[int, int]):
+        """הגדרת מיקום ישירות (למשחק חדש או טלפורט)"""
+        self.current_cell = tuple(cell)
+        self.start_cell = tuple(cell)
+        self.target_cell = None
+        self.state = "Idle"
+    
+    def stop_movement(self):
+        """עצירת תנועה מיידית"""
+        if self.state in ["Moving", "Jumping"]:
+            self.state = "Idle"
+            self.target_cell = None
+            self.duration_ms = None
+            # החזרת יכולות לרגיל
+            self.can_be_captured_flag = True
+            self.can_capture_flag = True

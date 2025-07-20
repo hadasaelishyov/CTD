@@ -164,10 +164,8 @@ class Game:
             # עדכון פיזיקה ואנימציות
             for p in self.pieces:
                 p.update(now)
-
             # טיפול בקלט מקלדת
-            if not self.
-            ():
+            if not self._handle_keyboard_input():
                 break
 
             # טיפול בפקודות ממתינות

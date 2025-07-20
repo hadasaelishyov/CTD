@@ -20,7 +20,6 @@ class Physics:
         self.can_capture_flag = True
         self.current_command = None
 
-
     def reset(self, cmd: Command):
         self.current_command = cmd
         self.start_time_ms = cmd.timestamp
@@ -40,18 +39,18 @@ class Physics:
                 self.duration_ms = int((distance / self.SLIDE_CELLS_PER_SEC) * 1000)
                 self.state = "Moving"
                 self.can_be_captured_flag = False
-
                 
+                # קוד השהיה אחרי הסיום
                 self.cooldown_start_ms = cmd.timestamp + self.duration_ms
-                self.cooldown_duration_ms = 3000
+                self.cooldown_duration_ms = 2000  # 2 שניות כמו שביקשת
         
         elif cmd.type == "Jump":
             self.state = "Jumping"
-            self.duration_ms = 2000
+            self.duration_ms = 1000  # שנייה אחת כמו שביקשת
             self.cooldown_start_ms = cmd.timestamp
             self.cooldown_duration_ms = 1000
-            self.can_be_captured_flag = False
-            self.can_capture_flag = False
+            self.can_be_captured_flag = False  # במהלך קפיצה לא ניתן לאכול
+            self.can_capture_flag = False  # במהלך קפיצה לא ניתן לאכול אחרים
     
     def _parse_position(self, pos_str: str) -> Optional[Tuple[int, int]]:
         if len(pos_str) != 2:
@@ -67,20 +66,25 @@ class Physics:
     def update(self, now_ms: int):
         if self.start_time_ms is None:
             return
+            
         if self.state == "Moving" and self.current_command:
             elapsed_ms = now_ms - self.start_time_ms
             
             if elapsed_ms >= self.duration_ms:
+                # תזוזה הסתיימה
                 self.current_cell = self.target_cell
                 self.state = "Idle"
                 self.can_be_captured_flag = True
+                self.can_capture_flag = True
             else:
+                # עדיין בתזוזה - חישוב מיקום ביניים
                 ratio = elapsed_ms / self.duration_ms
-                r1, c1 = self.current_cell
+                r1, c1 = self.current_cell if hasattr(self.current_cell, '__iter__') else self.start_cell
                 r2, c2 = self.target_cell
                 cr = r1 + (r2 - r1) * ratio
                 cc = c1 + (c2 - c1) * ratio
                 self.current_cell = (cr, cc)
+                
         elif self.state == "Jumping":
             elapsed_ms = now_ms - self.start_time_ms
             if elapsed_ms >= self.duration_ms:
@@ -99,6 +103,13 @@ class Physics:
             return False
         return now_ms < (self.cooldown_start_ms + self.cooldown_duration_ms)
 
-    def get_pos(self) -> Tuple[int, int]:
-        r, c = self.current_cell
+    def get_pos(self) -> Tuple[float, float]:
+        """החזרת המיקום המדויק (לא מעוגל) לחישובי ציור"""
+        if isinstance(self.current_cell, tuple) and len(self.current_cell) == 2:
+            return self.current_cell
+        return (0.0, 0.0)
+    
+    def get_cell_pos(self) -> Tuple[int, int]:
+        """החזרת המיקום המעוגל לבדיקת התנגשויות"""
+        r, c = self.get_pos()
         return (round(r), round(c))

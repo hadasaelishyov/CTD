@@ -8,10 +8,8 @@ from Command import Command
 from Piece   import Piece
 from img     import Img
 
-
 class InvalidBoard(Exception): ...
 
-# ────────────────────────────────────────────────────────────────────
 class Game:
     def __init__(self, pieces: List[Piece], board: Board):
         """Initialize the game with pieces, board, and optional event bus."""
@@ -21,25 +19,27 @@ class Game:
         self.user_input_queue = queue.Queue()
         self.current_board = None
         self.game_start_time = None
-        self.window_name = "Game Board"
+        self.window_name = "Chess Game"
         self.mouse_callback_active = False
         
-        # Game state
+        # מצב המשחק
         self.winner = None
         self.game_over = False
+        
+        # מיקומי שחקנים
+        self.player1_cursor = [0, 0]
+        self.player2_cursor = [0, 0]
+        self.player1_selected_piece = None
+        self.player2_selected_piece = None
 
-    # ─── helpers ─────────────────────────────────────────────────────────────
     def game_time_ms(self) -> int:
         """Return the current game time in milliseconds."""
         if self.game_start_time is None:
             self.game_start_time = time.perf_counter()
-        return int(time.perf_counter() - self.game_start_time)
+            return 0
+        return int((time.perf_counter() - self.game_start_time) * 1000)
 
     def clone_board(self) -> Board:
-        """
-        Return a **brand-new** Board wrapping a copy of the background pixels
-        so we can paint sprites without touching the pristine board.
-        """
         return self.board.clone()
 
     def start_user_input_thread(self):
@@ -47,46 +47,40 @@ class Game:
         if not self.mouse_callback_active:
             cv2.namedWindow(self.window_name)
             self.mouse_callback_active = True
-            
-        # Initialize player cursors and selection
-        self.player1_cursor = [0, 0]  # [row, col]
-        self.player2_cursor = [0, 0]  # [row, col]
-        self.player1_selected_piece = None
-        self.player2_selected_piece = None
 
     def _handle_keyboard_input(self):
         """Handle keyboard input for both players."""
         key = cv2.waitKey(1) & 0xFF
         
-        if key == 255:  # No key pressed
+        if key == 255:  # אין מקש
             return True
             
-        # Player 1 controls (Arrow keys + Enter)
-        if key == 82:  # Up arrow
-            self.player1_cursor[0] = max(0, self.player1_cursor[0] - 1)
-        elif key == 84:  # Down arrow
+        # שחקן 1 (חיצים + Enter)
+        if key == 82:  # חץ למעלה
             self.player1_cursor[0] = min(self.board.H_cells - 1, self.player1_cursor[0] + 1)
-        elif key == 81:  # Left arrow
+        elif key == 84:  # חץ למטה
+            self.player1_cursor[0] = max(0, self.player1_cursor[0] - 1)
+        elif key == 81:  # חץ שמאלה
             self.player1_cursor[1] = max(0, self.player1_cursor[1] - 1)
-        elif key == 83:  # Right arrow
+        elif key == 83:  # חץ ימינה
             self.player1_cursor[1] = min(self.board.W_cells - 1, self.player1_cursor[1] + 1)
         elif key == 13:  # Enter
             self._handle_player_action(1, self.player1_cursor)
             
-        # Player 2 controls (WASD + Space)
+        # שחקן 2 (WASD + רווח)
         elif key == ord('w'):
-            self.player2_cursor[0] = max(0, self.player2_cursor[0] - 1)
-        elif key == ord('s'):
             self.player2_cursor[0] = min(self.board.H_cells - 1, self.player2_cursor[0] + 1)
+        elif key == ord('s'):
+            self.player2_cursor[0] = max(0, self.player2_cursor[0] - 1)
         elif key == ord('a'):
             self.player2_cursor[1] = max(0, self.player2_cursor[1] - 1)
         elif key == ord('d'):
             self.player2_cursor[1] = min(self.board.W_cells - 1, self.player2_cursor[1] + 1)
-        elif key == ord(' '):  # Space
+        elif key == ord(' '):  # רווח
             self._handle_player_action(2, self.player2_cursor)
             
-        # Exit keys
-        elif key == ord('q') or key == 27:  # 'q' or ESC
+        # מקשי יציאה
+        elif key == ord('q') or key == 27:  # 'q' או ESC
             return False
             
         return True
@@ -98,33 +92,44 @@ class Game:
         
         if player_num == 1:
             if self.player1_selected_piece is None:
-                # Select piece
-                if piece_at_cursor:
+                if piece_at_cursor and self._can_player_control_piece(1, piece_at_cursor):
                     self.player1_selected_piece = piece_at_cursor
-                    print(f"Player 1 selected piece: {piece_at_cursor.piece_id}")
+                    print(f"Player 1 selected: {piece_at_cursor.piece_id}")
             else:
-                # Move piece
-                self._create_move_command(self.player1_selected_piece, cursor_pos)
+                # בדיקה אם הכלי יכול לזוז (לא בקוד השהיה)
+                now_ms = self.game_time_ms()
+                if self.player1_selected_piece.current_state.physics.can_capture(now_ms):
+                    self._create_move_command(self.player1_selected_piece, cursor_pos)
+                else:
+                    print("Piece is in cooldown, cannot move!")
                 self.player1_selected_piece = None
                 
         elif player_num == 2:
             if self.player2_selected_piece is None:
-                # Select piece
-                if piece_at_cursor:
+                if piece_at_cursor and self._can_player_control_piece(2, piece_at_cursor):
                     self.player2_selected_piece = piece_at_cursor
-                    print(f"Player 2 selected piece: {piece_at_cursor.piece_id}")
+                    print(f"Player 2 selected: {piece_at_cursor.piece_id}")
             else:
-                # Move piece
-                self._create_move_command(self.player2_selected_piece, cursor_pos)
+                now_ms = self.game_time_ms()
+                if self.player2_selected_piece.current_state.physics.can_capture(now_ms):
+                    self._create_move_command(self.player2_selected_piece, cursor_pos)
+                else:
+                    print("Piece is in cooldown, cannot move!")
                 self.player2_selected_piece = None
 
+    def _can_player_control_piece(self, player_num: int, piece: Piece) -> bool:
+        """בדיקה אם השחקן יכול לשלוט בכלי (בהתבסס על ID או כל לוגיקה אחרת)"""
+        # זה רק דוגמה - תצטרך להתאים את זה לפי המבנה שלך
+        if player_num == 1:
+            return "white" in piece.piece_id.lower() or "w" in piece.piece_id.lower()
+        else:
+            return "black" in piece.piece_id.lower() or "b" in piece.piece_id.lower()
+
     def _create_move_command(self, piece: Piece, target_pos: list):
-        """Create and queue a move command."""
-        # Get current piece position
-        current_r, current_c = piece.current_state.physics.get_pos()
+        """יצירת פקודת תזוזה"""
+        current_r, current_c = piece.current_state.physics.get_cell_pos()
         current_pos = chr(ord('a') + int(current_c)) + str(int(current_r) + 1)
         
-        # Create target position
         target_r, target_c = target_pos
         target_chess_pos = chr(ord('a') + target_c) + str(target_r + 1)
         
@@ -135,220 +140,178 @@ class Game:
             params=[current_pos, target_chess_pos]
         )
         self.user_input_queue.put(cmd)
-        print(f"Move command: {piece.piece_id} from {current_pos} to {target_chess_pos}")
+        print(f"Move: {piece.piece_id} from {current_pos} to {target_chess_pos}")
 
     def _find_piece_at_cell(self, r: int, c: int) -> Optional[Piece]:
-        """Find piece at the given cell coordinates."""
+        """מציאת כלי במיקום נתון"""
         for piece in self.pieces:
-            piece_r, piece_c = piece.current_state.physics.get_pos()
-            if abs(piece_r - r) < 0.5 and abs(piece_c - c) < 0.5:
+            piece_r, piece_c = piece.current_state.physics.get_cell_pos()
+            if piece_r == r and piece_c == c:
                 return piece
         return None
 
-    # ─── main public entrypoint ──────────────────────────────────────────────
     def run(self):
-        """Main game loop."""
-        self.start_user_input_thread()
-
+        """לולאת המשחק הראשית"""
+        # self.start_user_input_thread()
         start_ms = self.game_time_ms()
+        
         for p in self.pieces:
             p.reset(start_ms)
 
-        # ─────── main loop ──────────────────────────────────────────────────
         while not self._is_win():
             now = self.game_time_ms()
 
-            # (1) update physics & animations
+            # עדכון פיזיקה ואנימציות
             for p in self.pieces:
                 p.update(now)
 
-            # (2) handle keyboard input
-            if not self._handle_keyboard_input():
+            # טיפול בקלט מקלדת
+            if not self.
+            ():
                 break
 
-            # (3) handle queued Commands from keyboard input
+            # טיפול בפקודות ממתינות
             while not self.user_input_queue.empty():
                 cmd: Command = self.user_input_queue.get()
                 self._process_input(cmd)
 
-            # (4) draw current position
+            # ציור
             self._draw()
-            if not self._show():           # returns False if user closed window
+            if not self._show():
                 break
 
-            # (5) detect captures
+            # בדיקת התנגשויות
             self._resolve_collisions()
 
-            # Small delay to control frame rate
             time.sleep(0.016)  # ~60 FPS
 
         self._announce_win()
         cv2.destroyAllWindows()
 
     def _process_input(self, cmd: Command):
-        """Process a user input command."""
-        # Find the piece that should execute this command
-        target_piece = None
+        """עיבוד פקודה מהמשתמש"""
         for piece in self.pieces:
             if piece.piece_id == cmd.piece_id:
-                target_piece = piece
+                piece.on_command(cmd, self.game_time_ms())
+                if self.event_bus:
+                    event = Event("command_executed", {"command": cmd, "piece": piece})
+                    self.event_bus.publish(event)
                 break
-        
-        if target_piece:
-            target_piece.on_command(cmd, self.game_time_ms())
-            
-            # Publish event if event bus is available
-            if self.event_bus:
-                event = Event("command_executed", {"command": cmd, "piece": target_piece})
-                self.event_bus.publish(event)
 
-    # ─── drawing helpers ────────────────────────────────────────────────────
     def _draw(self):
-        """Draw the current game state."""
-        # Start with a fresh copy of the board
+        """ציור המצב הנוכחי"""
         self.current_board = self.clone_board()
-        
-        # Draw all pieces on the board
         now_ms = self.game_time_ms()
+        
         for piece in self.pieces:
-            try:
-                piece.draw_on_board(self.current_board, now_ms)
-            except Exception as e:
-                print(f"Error drawing piece {piece.piece_id}: {e}")
-                continue
+            piece.draw_on_board(self.current_board, now_ms)
         
-        # Draw player cursors
-        self._draw_cursor(1, self.player1_cursor, (0, 255, 0))  # Green for player 1
-        self._draw_cursor(2, self.player2_cursor, (0, 0, 255))  # Red for player 2
+        # ציור סמני השחקנים
+        self._draw_cursor(1, self.player1_cursor, (0, 255, 0))  # ירוק לשחקן 1
+        self._draw_cursor(2, self.player2_cursor, (0, 0, 255))  # אדום לשחקן 2
         
-        # Draw selection indicators
+        # ציור בחירות
         if self.player1_selected_piece:
-            r, c = self.player1_selected_piece.current_state.physics.get_pos()
-            self._draw_selection(int(r), int(c), (0, 255, 255))  # Yellow for player 1 selection
+            r, c = self.player1_selected_piece.current_state.physics.get_cell_pos()
+            self._draw_selection(r, c, (0, 255, 255))  # צהוב
             
         if self.player2_selected_piece:
-            r, c = self.player2_selected_piece.current_state.physics.get_pos()
-            self._draw_selection(int(r), int(c), (255, 0, 255))  # Magenta for player 2 selection
+            r, c = self.player2_selected_piece.current_state.physics.get_cell_pos()
+            self._draw_selection(r, c, (255, 0, 255))  # מגנטה
 
     def _draw_cursor(self, player_num: int, cursor_pos: list, color: tuple):
-        """Draw player cursor on the board."""
+        """ציור סמן השחקן"""
         row, col = cursor_pos
         x = col * self.board.cell_W_pix
         y = row * self.board.cell_H_pix
         
-        # Draw cursor border
-        cv2.rectangle(
-            self.current_board.img.img,
-            (x, y),
-            (x + self.board.cell_W_pix - 1, y + self.board.cell_H_pix - 1),
-            color,
-            3
-        )
+        cv2.rectangle(self.current_board.img.img, (x, y),
+                     (x + self.board.cell_W_pix - 1, y + self.board.cell_H_pix - 1),
+                     color, 3)
         
-        # Draw player number
-        self.current_board.img.put_text(
-            str(player_num),
-            x + 5, y + 25,
-            font_size=0.7,
-            color=(*color, 255),
-            thickness=2
-        )
+        self.current_board.img.put_text(str(player_num), x + 5, y + 25,
+                                       0.7, (*color, 255), 2)
 
     def _draw_selection(self, row: int, col: int, color: tuple):
-        """Draw selection indicator for selected piece."""
+        """ציור בחירת כלי"""
         x = col * self.board.cell_W_pix
         y = row * self.board.cell_H_pix
         
-        # Draw selection border (thicker than cursor)
-        cv2.rectangle(
-            self.current_board.img.img,
-            (x + 2, y + 2),
-            (x + self.board.cell_W_pix - 3, y + self.board.cell_H_pix - 3),
-            color,
-            5
-        )
+        cv2.rectangle(self.current_board.img.img,
+                     (x + 2, y + 2),
+                     (x + self.board.cell_W_pix - 3, y + self.board.cell_H_pix - 3),
+                     color, 5)
 
     def _show(self) -> bool:
-        """Show the current frame and handle window events."""
+        """הצגת הפריים הנוכחי"""
         if self.current_board is None or self.current_board.img.img is None:
             return True
             
         try:
             cv2.imshow(self.window_name, self.current_board.img.img)
-            
-            # Check if window was closed
             if cv2.getWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE) < 1:
                 return False
-                
             return True
         except cv2.error:
             return False
 
-    # ─── capture resolution ────────────────────────────────────────────────
     def _resolve_collisions(self):
-        """Resolve piece collisions and captures."""
+        """פתרון התנגשויות ואכילות"""
         now_ms = self.game_time_ms()
         pieces_to_remove = []
         
         for i, piece1 in enumerate(self.pieces):
-            for j, piece2 in enumerate(self.pieces[i+1:], i+1):
-                # Get current positions
-                r1, c1 = piece1.current_state.physics.get_pos()
-                r2, c2 = piece2.current_state.physics.get_pos()
+            for piece2 in self.pieces[i+1:]:
+                r1, c1 = piece1.current_state.physics.get_cell_pos()
+                r2, c2 = piece2.current_state.physics.get_cell_pos()
                 
-                # Check if pieces are in the same cell (collision)
-                distance = math.sqrt((r1 - r2)**2 + (c1 - c2)**2)
-                
-                if distance < 0.8:  # Close enough to be considered same cell
-                    # Determine capture based on physics states
-                    can_piece1_capture = piece1.current_state.physics.can_capture(now_ms)
-                    can_piece2_capture = piece2.current_state.physics.can_capture(now_ms)
-                    can_piece1_be_captured = piece1.current_state.physics.can_be_captured(now_ms)
-                    can_piece2_be_captured = piece2.current_state.physics.can_be_captured(now_ms)
+                # בדיקת התנגשות (אותו ריבוע)
+                if r1 == r2 and c1 == c2:
+                    can_p1_capture = piece1.current_state.physics.can_capture(now_ms)
+                    can_p2_capture = piece2.current_state.physics.can_capture(now_ms)
+                    can_p1_be_captured = piece1.current_state.physics.can_be_captured(now_ms)
+                    can_p2_be_captured = piece2.current_state.physics.can_be_captured(now_ms)
                     
-                    # Capture logic
-                    if can_piece1_capture and can_piece2_be_captured:
+                    # הכלי שהתחיל לזוז ראשון אוכל את השני
+                    p1_start = piece1.current_state.physics.start_time_ms or 0
+                    p2_start = piece2.current_state.physics.start_time_ms or 0
+                    
+                    if can_p1_capture and can_p2_be_captured and p1_start < p2_start:
                         pieces_to_remove.append(piece2)
-                        print(f"Piece {piece1.piece_id} captured {piece2.piece_id}")
-                    elif can_piece2_capture and can_piece1_be_captured:
+                        print(f"{piece1.piece_id} captured {piece2.piece_id}")
+                    elif can_p2_capture and can_p1_be_captured and p2_start < p1_start:
                         pieces_to_remove.append(piece1)
-                        print(f"Piece {piece2.piece_id} captured {piece1.piece_id}")
+                        print(f"{piece2.piece_id} captured {piece1.piece_id}")
         
-        # Remove captured pieces
+        # הסרת הכלים שנאכלו
         for piece in pieces_to_remove:
             if piece in self.pieces:
                 self.pieces.remove(piece)
 
-    # ─── board validation & win detection ───────────────────────────────────
     def _is_win(self) -> bool:
-        """Check if the game has ended."""
+        """בדיקת תנאי ניצחון"""
         if self.game_over:
             return True
             
-        # Simple win condition: only one piece remaining
-        if len(self.pieces) <= 1:
+        # חיפוש מלכים
+        kings = [p for p in self.pieces if "king" in p.piece_id.lower()]
+        
+        if len(kings) <= 1:
             self.game_over = True
-            if len(self.pieces) == 1:
-                self.winner = self.pieces[0]
+            if len(kings) == 1:
+                self.winner = kings[0]
             return True
             
         return False
 
     def _announce_win(self):
-        """Announce the winner."""
+        """הכרזת המנצח"""
         if self.winner:
             print(f"Game Over! Winner: {self.winner.piece_id}")
-            
-            # Draw winner message on board
             if self.current_board:
-                self.current_board.img.put_text(
-                    f"Winner: {self.winner.piece_id}",
-                    50, 50,
-                    font_size=2.0,
-                    color=(0, 255, 0, 255),  # Green
-                    thickness=3
-                )
+                self.current_board.img.put_text(f"Winner: {self.winner.piece_id}",
+                                               50, 50, 2.0, (0, 255, 0, 255), 3)
                 cv2.imshow(self.window_name, self.current_board.img.img)
-                cv2.waitKey(3000)  # Show for 3 seconds
+                cv2.waitKey(3000)
         else:
-            print("Game Over! No winner.")
+            print("Game Over! Draw!")

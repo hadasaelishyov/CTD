@@ -49,7 +49,7 @@ class Physics:
         return new_physics
 
     def reset(self, cmd: Command):
-        """איפוס הפיזיקה עם פקודה חדשה"""
+        """איפוס הפיזיקה עם פקודה חדשה - תיקון להשהיה נכונה"""
         self.current_command = cmd
         self.start_time_ms = cmd.timestamp
         
@@ -70,7 +70,7 @@ class Physics:
             self._handle_jump_command(cmd)
 
     def _handle_move_command(self, cmd: Command):
-        """טיפול בפקודת תזוזה"""
+        """טיפול בפקודת תזוזה - תיקון להשהיה של 4 שניות"""
         start_pos = self._parse_position(cmd.params[0])
         target_pos = self._parse_position(cmd.params[1])
         
@@ -85,12 +85,12 @@ class Physics:
             self.state = "Moving"
             self.can_be_captured_flag = False  # במהלך תזוזה לא ניתן לאכילה
             
-            # הגדרת קוד השהיה אחרי סיום התזוזה
+            # תיקון: הגדרת קוד השהיה של 4 שניות אחרי סיום התזוזה
             self.cooldown_start_ms = cmd.timestamp + self.duration_ms
-            self.cooldown_duration_ms = 2000  # שתי שניות
+            self.cooldown_duration_ms = 4000  # 4 שניות במקום 2!
             
     def _handle_jump_command(self, cmd: Command):
-        """טיפול בפקודת קפיצה"""
+        """טיפול בפקודת קפיצה - תיקון להשהיה של שנייה אחת"""
         self.state = "Jumping"
         self.duration_ms = 1000  # שנייה אחת
         
@@ -98,8 +98,8 @@ class Physics:
         self.can_be_captured_flag = False
         self.can_capture_flag = False
         
-        # קוד השהיה מתחיל מיד
-        self.cooldown_start_ms = cmd.timestamp
+        # תיקון: קוד השהיה מתחיל אחרי סיום הקפיצה
+        self.cooldown_start_ms = cmd.timestamp + self.duration_ms  # אחרי הקפיצה!
         self.cooldown_duration_ms = 1000  # שנייה אחת
     
     def _parse_position(self, pos_str: str) -> Optional[Tuple[int, int]]:
@@ -230,3 +230,14 @@ class Physics:
             # החזרת יכולות לרגיל
             self.can_be_captured_flag = True
             self.can_capture_flag = True
+    def can_pass_through(self, now_ms: int) -> bool:
+        """בדיקה האם כלי יכול לעבור דרך (במהלך קפיצה)"""
+        return self.state == "Jumping"
+
+    def is_in_air(self, now_ms: int) -> bool:
+        """בדיקה האם הכלי באוויר (קופץ)"""
+        return self.state == "Jumping"
+
+    def get_movement_start_time(self) -> int:
+        """קבלת זמן תחילת התנועה - לצורך קביעת עדיפות בהתנגשות"""
+        return self.start_time_ms if self.start_time_ms else 0

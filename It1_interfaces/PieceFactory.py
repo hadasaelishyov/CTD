@@ -34,6 +34,7 @@ class PieceFactory:
                     print(f"Failed to load piece template {piece_dir.name}: {e}")
                         
     def _build_state_machine(self, piece_dir: pathlib.Path) -> State:
+        """בניית מכונת מצבים - תיקון ליצירת moves נכון"""
         config_file = piece_dir / "config.json"
         config = {}
         
@@ -63,39 +64,34 @@ class PieceFactory:
                 f.write("-1,1\n")  # up-left
                 f.write("-1,-1\n") # down-left
         
-        moves = Moves(moves_file, (self.board.H_cells, self.board.W_cells))  # תיקון: H,W
+        # תיקון: יצירת אובייקט Moves חדש לכל כלי
+        moves = Moves(moves_file, (self.board.H_cells, self.board.W_cells))
         
         # Load graphics from states directory
         states_dir = piece_dir / "states"
         sprites_dir = None
         
         if states_dir.exists():
-            # Try to load idle state first
             idle_sprites_dir = states_dir / "idle" / "sprites"
             if idle_sprites_dir.exists():
                 sprites_dir = idle_sprites_dir
             else:
-                # Fallback to first available state
                 for state_subdir in states_dir.iterdir():
                     candidate_sprites_dir = state_subdir / "sprites"
                     if candidate_sprites_dir.exists():
                         sprites_dir = candidate_sprites_dir
                         break
         
-        # Final fallback
         if sprites_dir is None:
             sprites_dir = piece_dir / "sprites"
             if not sprites_dir.exists():
-                sprites_dir = piece_dir  # Use piece root as last resort
+                sprites_dir = piece_dir
 
         graphics = self.graphics_factory.load(sprites_dir, config.get('graphics', {}), cell_size)
         physics = self.physics_factory.create((0, 0), config.get('physics', {}))
         
         # Create the idle state
         idle_state = State(moves, graphics, physics)
-        
-        # TODO: Add more states (move, jump, capture) and transitions
-        # For now, just return the idle state
         
         return idle_state
 

@@ -16,15 +16,16 @@ class State:
         self.state_start_time = 0
 
     def copy(self):
-        """יצירת עותק של המצב"""
+        """יצירת עותק של המצב - תיקון חשוב"""
+        new_moves = self.moves.copy()  # יצירת עותק של moves
         new_graphics = self.graphics.copy()
         new_physics = self.physics.copy()
-        new_state = State(self.moves, new_graphics, new_physics)  # moves יכול להישתף
+        new_state = State(new_moves, new_graphics, new_physics)
         new_state.transitions = self.transitions.copy()
         new_state.current_command = self.current_command
         new_state.state_start_time = self.state_start_time
         return new_state
-
+    
     def set_transition(self, event: str, target: "State"):
         self.transitions[event] = target
 

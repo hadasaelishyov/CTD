@@ -25,6 +25,7 @@ class Piece:
         self.last_update_time = now_ms
 
     def draw_on_board(self, board: Board, now_ms: int):
+        """ציור הכלי על הלוח - תיקון לטיפול בקפיצה"""
         sprite_img = self.current_state.graphics.get_img()
         
         # קבלת המיקום המדויק מהפיזיקה
@@ -33,6 +34,12 @@ class Piece:
         # המרה לפיקסלים
         pixel_x = int(cell_c * board.cell_W_pix)
         pixel_y = int(cell_r * board.cell_H_pix)
+        
+        # אם הכלי קופץ, הוסף אפקט חזותי
+        if self.current_state.physics.is_in_air(now_ms):
+            # הוסף צל או שנה את גובה הציור
+            pixel_y -= 10  # הרם את הכלי מעלה
+            self._draw_shadow(board, pixel_x, pixel_y + 10, now_ms)
         
         # ציור הספרייט
         try:
@@ -43,7 +50,18 @@ class Piece:
         # הוספת אינדיקטור קוד השהיה
         if not self.current_state.physics.can_be_captured(now_ms):
             self._draw_cooldown_overlay(board, pixel_x, pixel_y, now_ms)
-    
+    def _draw_shadow(self, board: Board, x: int, y: int, now_ms: int):
+        """ציור צל לכלי קופץ"""
+        try:
+            import cv2
+            # ציור עיגול אפור כצל
+            center_x = x + board.cell_W_pix // 2
+            center_y = y + board.cell_H_pix // 2
+            radius = min(board.cell_W_pix, board.cell_H_pix) // 4
+            cv2.circle(board.img.img, (center_x, center_y), radius, (128, 128, 128, 128), -1)
+        except:
+            pass
+
     def _draw_cooldown_overlay(self, board: Board, x: int, y: int, now_ms: int):
         """ציור אינדיקטור קוד השהיה"""
         cooldown_end = (self.current_state.physics.cooldown_start_ms + 
@@ -58,3 +76,18 @@ class Piece:
                             (0, 0, 255), 3)  # מסגרת אדומה
             except:
                 pass
+    def can_collide_with(self, other_piece: "Piece", now_ms: int) -> bool:
+        """בדיקה האם שני כלים יכולים להתנגש"""
+        # כלי שקופץ לא יכול להתנגש
+        if (self.current_state.physics.is_in_air(now_ms) or 
+            other_piece.current_state.physics.is_in_air(now_ms)):
+            return False
+        
+        # בדיקה אם הכלים באותה משבצת
+        my_pos = self.current_state.physics.get_cell_pos()
+        other_pos = other_piece.current_state.physics.get_cell_pos()
+        
+        return my_pos == other_pos
+    def get_movement_priority(self) -> int:
+        """קבלת עדיפות התנועה - מי התחיל לזוז ראשון"""
+        return self.current_state.physics.get_movement_start_time()

@@ -89,25 +89,7 @@ def create_board() -> Board:
             
             board_img[y_start:y_end, x_start:x_end] = color
     
-    # הוספת מספרי שורות ואותיות עמודות
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.5
-    font_thickness = 1
-    text_color = (60, 60, 60)  # אפור כהה (בלי אלפא)
-    
-    # אותיות עמודות (a-h)
-    for col in range(8):
-        letter = chr(ord('a') + col)
-        x = col * cell_size + cell_size // 2 - 5
-        y = board_height - 5
-        cv2.putText(board_img, letter, (x, y), font, font_scale, text_color, font_thickness)
-    
-    # מספרי שורות (1-8)
-    for row in range(8):
-        number = str(8 - row)  # שחמט מתחיל מ-1 למטה ו-8 למעלה
-        x = 5
-        y = row * cell_size + cell_size // 2 + 5
-        cv2.putText(board_img, number, (x, y), font, font_scale, text_color, font_thickness)
+
     
     # יצירת אובייקט Img
     if Img:
@@ -125,90 +107,13 @@ def create_board() -> Board:
         img=img_obj
     )
 
-
-def create_demo_pieces():
-    """יצירת כלים פשוטים לדמו (אם אין PieceFactory)"""
-    
-    if not (Piece and Board):
-        print("Missing required classes for pieces")
-        return []
-    
-    pieces = []
-    
-    # ננסה ליצור כמה כלים פשוטים
-    try:
-        # יצירת מחלקות פשוטות לדמו
-        class DemoState:
-            def __init__(self, row, col):
-                self.physics = DemoPhysics(row, col)
-                self.graphics = DemoGraphics()
-                self.current_command = None
-            
-            def get_state_after_command(self, cmd, now_ms):
-                return self
-            
-            def update(self, now_ms):
-                return self
-            
-            def reset(self, cmd):
-                pass
-        
-        class DemoPhysics:
-            def __init__(self, row, col):
-                self.row = row
-                self.col = col
-                self.cooldown_start_ms = 0
-                self.cooldown_duration_ms = 1000
-            
-            def get_cell_pos(self):
-                return (self.row, self.col)
-            
-            def get_pos(self):
-                return (self.row, self.col)
-            
-            def can_capture(self, now_ms):
-                return True
-            
-            def can_be_captured(self, now_ms):
-                return True
-        
-        class DemoGraphics:
-            def __init__(self):
-                pass
-            
-            def get_img(self):
-                return DemoSprite()
-        
-        class DemoSprite:
-            def draw_on(self, target_img, x, y):
-                # ציור ריבוע פשוט
-                cv2.rectangle(target_img.img, (x+10, y+10), (x+70, y+70), (255, 0, 0), -1)
-        
-        # יצירת כמה כלים לדמו
-        demo_positions = [(0, 0), (0, 7), (7, 0), (7, 7)]
-        
-        for i, (row, col) in enumerate(demo_positions):
-            state = DemoState(row, col)
-            piece = Piece(f"demo_piece_{i+1}", state)
-            pieces.append(piece)
-            print(f"Created demo piece at ({row}, {col})")
-    
-    except Exception as e:
-        print(f"Error creating demo pieces: {e}")
-    
-    return pieces
-
-
 def create_pieces(board: Board) -> list:
     """יצירת כלים למשחק על בסיס הקבצים הקיימים"""
     
     pieces = []
+
     
-    if PieceFactory is None:
-        print("PieceFactory not available, creating demo pieces...")
-        return create_demo_pieces()
-    
-    pieces_root = pathlib.Path(".")
+    pieces_root = pathlib.Path("")
     
     # חיפוש תיקיית pieces
     possible_paths = [
@@ -223,7 +128,7 @@ def create_pieces(board: Board) -> list:
         if path.exists():
             piece_subdirs = [d for d in path.iterdir() 
                            if d.is_dir() and 
-                           (d.name in ['BB', 'BW', 'king', 'queen', 'pawn', 'rook', 'knight', 'bishop'] or
+                           (d.name in ['BB', 'BW', 'KB', 'KW', 'NB', 'NW', 'PB', 'PW', 'QB', 'QW', 'RB', 'RW'] or
                             (d / "sprites").exists() or 
                             (d / "states").exists())]
             
@@ -232,40 +137,68 @@ def create_pieces(board: Board) -> list:
                 print(f"Found pieces in: {pieces_dir}")
                 break
     
-    if not pieces_dir:
-        print("No pieces directory found, creating demo pieces...")
-        return create_demo_pieces()
+
     
-    try:
-        piece_factory = PieceFactory(board, pieces_dir)
-        available_types = discover_piece_types(pieces_dir)
+    piece_factory = PieceFactory(board, pieces_dir)
+    available_types = discover_piece_types(pieces_dir)
+    
+    print(f"Available piece types: {available_types}")
+    
+    # הגדרת מיקומים מסורתיים של שחמט
+    piece_setup = {
+        # שורה 1 - כלים לבנים עיקריים
+        'RW': [(0, 0), (0, 7)],  # צריחים לבנים
+        'NW': [(0, 1), (0, 6)],  # סוסים לבנים
+        'BW': [(0, 2), (0, 5)],  # רצים לבנים
+        'QW': [(0, 3)],          # מלכה לבנה
+        'KW': [(0, 4)],          # מלך לבן
         
-        if not available_types:
-            print("No valid piece types found, creating demo pieces...")
-            return create_demo_pieces()
+        # שורה 2 - חיילים לבנים
+        'PW': [(1, col) for col in range(8)],
         
-        print(f"Available piece types: {available_types}")
+        # שורה 7 - חיילים שחורים
+        'PB': [(6, col) for col in range(8)],
         
-        # יצירת כמה כלים פשוטים לבדיקה
-        test_positions = [(3, 3), (4, 4)]
-        
-        for i, (row, col) in enumerate(test_positions):
-            if i < len(available_types):
-                piece_type = available_types[i]
+        # שורה 8 - כלים שחורים עיקריים
+        'RB': [(7, 0), (7, 7)],  # צריחים שחורים
+        'NB': [(7, 1), (7, 6)],  # סוסים שחורים
+        'BB': [(7, 2), (7, 5)],  # רצים שחורים
+        'QB': [(7, 3)],          # מלכה שחורה
+        'KB': [(7, 4)],          # מלך שחור
+    }
+    
+    # יצירת הכלים לפי ההגדרה המסורתית
+    for piece_type in available_types:
+        if piece_type in piece_setup:
+            positions = piece_setup[piece_type]
+            for row, col in positions:
                 try:
                     piece = piece_factory.create_piece(piece_type, (row, col))
                     pieces.append(piece)
                     print(f"Created piece: {piece.piece_id} at ({row}, {col})")
                 except Exception as e:
-                    print(f"Failed to create piece {piece_type}: {e}")
+                    print(f"Failed to create piece {piece_type} at ({row}, {col}): {e}")
+    
+    # אם לא הצלחנו ליצור כלים, ננסה ליצור כמה כלים בסיסיים לפחות
+    if not pieces:
+        print("Failed to create standard setup, trying basic pieces...")
+        basic_setup = [
+            ('KW', (0, 4)), ('KB', (7, 4)),  # מלכים
+            ('QW', (0, 3)), ('QB', (7, 3)),  # מלכות
+            ('RW', (0, 0)), ('RB', (7, 0)),  # צריחים
+            ('BW', (0, 2)), ('BB', (7, 2)),  # רצים
+        ]
         
-        if not pieces:
-            print("Failed to create any pieces with PieceFactory, using demo...")
-            return create_demo_pieces()
-        
-    except Exception as e:
-        print(f"Error with PieceFactory: {e}")
-        return create_demo_pieces()
+        for piece_type, (row, col) in basic_setup:
+            if piece_type in available_types:
+                try:
+                    piece = piece_factory.create_piece(piece_type, (row, col))
+                    pieces.append(piece)
+                    print(f"Created basic piece: {piece.piece_id} at ({row}, {col})")
+                except Exception as e:
+                    print(f"Failed to create basic piece {piece_type}: {e}")
+    
+
     
     return pieces
 
@@ -315,63 +248,6 @@ def validate_game_setup():
     return issues
 
 
-def create_simple_demo():
-    """יצירת דמו פשוט אם כל השאר נכשל"""
-    
-    print("Creating simple demo...")
-    
-    # יצירת לוח פשוט
-    cell_size = 80
-    board_width = 8 * cell_size
-    board_height = 8 * cell_size
-    
-    board_img = np.zeros((board_height, board_width, 3), dtype=np.uint8)
-    
-    # צבעים לסירוגין
-    light_color = [240, 217, 181]
-    dark_color = [181, 136, 99]
-    
-    for row in range(8):
-        for col in range(8):
-            color = light_color if (row + col) % 2 == 0 else dark_color
-            y_start = row * cell_size
-            y_end = (row + 1) * cell_size
-            x_start = col * cell_size
-            x_end = (col + 1) * cell_size
-            
-            board_img[y_start:y_end, x_start:x_end] = color
-    
-    # הוספת כמה ריבועים צבעוניים כ"כלים"
-    piece_positions = [(100, 100), (180, 180), (340, 340), (420, 420)]
-    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]
-    
-    for (x, y), color in zip(piece_positions, colors):
-        cv2.rectangle(board_img, (x, y), (x+60, y+60), color, -1)
-        cv2.rectangle(board_img, (x, y), (x+60, y+60), (0, 0, 0), 2)
-    
-    # הצגת הדמו
-    window_name = "Simple Chess Demo"
-    cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
-    
-    print("Demo created! Press any key to close or 'q' to quit")
-    
-    try:
-        while True:
-            cv2.imshow(window_name, board_img)
-            key = cv2.waitKey(30) & 0xFF
-            
-            if key == ord('q') or key == 27:  # q או ESC
-                break
-            if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
-                break
-    
-    except Exception as e:
-        print(f"Error in demo loop: {e}")
-    
-    finally:
-        cv2.destroyAllWindows()
-
-
 def main():
     """פונקציית הרצה ראשית"""
     
@@ -388,20 +264,13 @@ def main():
             print(f"   • {issue}")
     
     # אם יש בעיות קריטיות, נריץ דמו פשוט
-    if Game is None or Board is None:
-        print("\n⚠️  Missing critical classes. Running simple demo instead...")
-        create_simple_demo()
-        return
+
     
     try:
         # יצירת הלוח
         print("\n🏁 Creating board...")
         board = create_board()
-        
-        if board is None:
-            print("Failed to create board, running simple demo...")
-            create_simple_demo()
-            return
+
         
         print("✅ Board created successfully")
         
@@ -440,8 +309,6 @@ def main():
         print(f"\n❌ Error during game execution:")
         print(f"   {type(e).__name__}: {e}")
         
-        print(f"\n🔧 Running simple demo instead...")
-        create_simple_demo()
         
     finally:
         try:

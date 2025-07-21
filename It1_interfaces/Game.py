@@ -39,7 +39,7 @@ class Game:
         # FPS control
         self.target_fps = 30
         self.frame_time = 1.0 / self.target_fps
-        self.last_frame_time = time.time()
+        self.last_frame_time = time.perf_counter()
         
         # הגדרת event handlers
         self._setup_event_handlers()
@@ -195,9 +195,12 @@ class Game:
         
         # בדיקה אם הכלי בקירור (אם יש פונקציה כזאת)
         if hasattr(piece.current_state.physics, 'can_capture'):
-            if not piece.current_state.physics.can_capture(now_ms):
-                print("Piece is in cooldown, cannot move!")
-                return False
+            try:
+                if not piece.current_state.physics.can_capture(now_ms):
+                    print("Piece is in cooldown, cannot move!")
+                    return False
+            except:
+                pass  # אם הפונקציה לא עובדת, נמשיך
         
         target_row, target_col = target_pos
         
@@ -243,22 +246,22 @@ class Game:
         piece_id_lower = piece.piece_id.lower()
         
         if player_num == 1:  # שחקן לבן
-            return any(identifier in piece_id_lower for identifier in ["white", "w_", "_w", "light"])
+            return any(identifier in piece_id_lower for identifier in ["white", "w_", "_w", "light", "bw", "kw", "nw", "pw", "qw", "rw"])
         else:  # שחקן שחור
-            return any(identifier in piece_id_lower for identifier in ["black", "b_", "_b", "dark"])
-
+            return any(identifier in piece_id_lower for identifier in ["black", "b_", "_b", "dark", "bb", "kb", "nb", "pb", "qb", "rb"])
+    
     def _is_same_team(self, piece1: Piece, piece2: Piece) -> bool:
         """בדיקה אם שני כלים שייכים לאותה קבוצה"""
         p1_id = piece1.piece_id.lower()
         p2_id = piece2.piece_id.lower()
         
         # בדיקה אם שניהם לבנים
-        p1_white = any(identifier in p1_id for identifier in ["white", "w_", "_w", "light"])
-        p2_white = any(identifier in p2_id for identifier in ["white", "w_", "_w", "light"])
+        p1_white = any(identifier in p1_id for identifier in ["white", "w_", "_w", "light", "bw", "kw", "nw", "pw", "qw", "rw"])
+        p2_white = any(identifier in p2_id for identifier in ["white", "w_", "_w", "light", "bw", "kw", "nw", "pw", "qw", "rw"])
         
         # בדיקה אם שניהם שחורים
-        p1_black = any(identifier in p1_id for identifier in ["black", "b_", "_b", "dark"])
-        p2_black = any(identifier in p2_id for identifier in ["black", "b_", "_b", "dark"])
+        p1_black = any(identifier in p1_id for identifier in ["black", "b_", "_b", "dark", "bb", "kb", "nb", "pb", "qb", "rb"])
+        p2_black = any (identifier in p2_id for identifier in ["black", "b_", "_b", "dark", "bb", "kb", "nb", "pb", "qb", "rb"])
         
         return (p1_white and p2_white) or (p1_black and p2_black)
 
@@ -268,6 +271,10 @@ class Game:
             current_r, current_c = piece.current_state.physics.get_cell_pos()
             
             target_r, target_c = target_pos
+            
+            # עדכון ישיר של מיקום הכלי (לדמו)
+            piece.current_state.physics.row = target_r
+            piece.current_state.physics.col = target_c
             
             # המרה לסימון שח
             current_pos = chr(ord('a') + int(current_c)) + str(int(current_r) + 1)
@@ -317,9 +324,11 @@ class Game:
         print("Black player (Player 2): IJKL + U")
         print("Press 'r' to reset selection, 'q' to quit")
 
+        frame_count = 0
         while not self._is_win():
-            current_time = time.time()
+            current_time = time.perf_counter()
             now = self.game_time_ms()
+            frame_count += 1
 
             # עדכון פיזיקה ואנימציות
             for p in self.pieces:
@@ -327,7 +336,8 @@ class Game:
                     if hasattr(p, 'update'):
                         p.update(now)
                 except Exception as e:
-                    print(f"Error updating piece {p.piece_id}: {e}")
+                    if frame_count % 300 == 0:  # הדפס רק כל 10 שניות בערך
+                        print(f"Error updating piece {p.piece_id}: {e}")
 
             # טיפול בקלט מקלדת
             try:
@@ -359,7 +369,7 @@ class Game:
                 print(f"Error resolving collisions: {e}")
 
             # FPS control
-            elapsed = time.time() - current_time
+            elapsed = time.perf_counter() - current_time
             if elapsed < self.frame_time:
                 time.sleep(self.frame_time - elapsed)
 
@@ -397,6 +407,9 @@ class Game:
                 try:
                     if hasattr(piece, 'draw_on_board'):
                         piece.draw_on_board(self.current_board, now_ms)
+                    else:
+                        # ציור פשוט לדמו
+                        self._draw_demo_piece(piece)
                 except Exception as e:
                     print(f"Error drawing piece {piece.piece_id}: {e}")
             
@@ -427,6 +440,56 @@ class Game:
         except Exception as e:
             print(f"Error in draw method: {e}")
 
+    def _draw_demo_piece(self, piece: Piece):
+        """ציור משופר לכלי דמו"""
+        try:
+            r, c = piece.current_state.physics.get_cell_pos()
+            x = c * self.current_board.cell_W_pix + 10
+            y = r * self.current_board.cell_H_pix + 10
+            
+            # צבע לפי השחקן
+            if self._can_player_control_piece(1, piece):
+                color = (255, 255, 255)  # לבן
+                border_color = (200, 200, 200)
+            else:
+                color = (50, 50, 50)  # כמעט שחור
+                border_color = (100, 100, 100)
+            
+            # ציור ריבוע עם צללית
+            shadow_offset = 3
+            cv2.rectangle(self.current_board.img.img, 
+                        (x + shadow_offset, y + shadow_offset), 
+                        (x + 60 + shadow_offset, y + 60 + shadow_offset), 
+                        (0, 0, 0), -1)
+            
+            # ציור הכלי עצמו
+            cv2.rectangle(self.current_board.img.img, 
+                        (x, y), 
+                        (x + 60, y + 60), 
+                        color, -1)
+            cv2.rectangle(self.current_board.img.img, 
+                        (x, y), 
+                        (x + 60, y + 60), 
+                        border_color, 2)
+                        
+            # הוספת טקסט משופר
+            piece_name = piece.piece_id
+            if "_" in piece_name:
+                # נקח את החלק האחרון של השם
+                piece_type = piece_name.split('_')[0][:2].upper()
+            else:
+                piece_type = piece_name[:2].upper()
+            
+            # בחירת צבע טקסט
+            text_color = (0, 0, 0) if self._can_player_control_piece(1, piece) else (255, 255, 255)
+            
+            cv2.putText(self.current_board.img.img, piece_type, 
+                    (x + 15, y + 35), cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.6, text_color, 2)
+                    
+        except Exception as e:
+            print(f"Error drawing demo piece: {e}")
+
     def _draw_cursor(self, player_num: int, cursor_pos: list, color: tuple):
         """ציור סמן השחקן"""
         try:
@@ -443,6 +506,10 @@ class Game:
             if hasattr(self.current_board.img, 'put_text'):
                 self.current_board.img.put_text(str(player_num), x + 5, y + 25,
                                                0.7, (*color, 255), 2)
+            else:
+                cv2.putText(self.current_board.img.img, str(player_num), 
+                           (x + 5, y + 25), cv2.FONT_HERSHEY_SIMPLEX, 
+                           0.7, color, 2)
         except Exception as e:
             print(f"Error drawing cursor: {e}")
 
@@ -461,12 +528,21 @@ class Game:
             print(f"Error drawing selection: {e}")
 
     def _draw_game_info(self):
-        """ציור מידע על המשחק"""
+        """ציור מידע משופר על המשחק - להחליף בקלאס Game"""
         try:
-            # מידע על התור הנוכחי
+            # מידע על התור הנוכחי עם רקע
             turn_text = f"Turn: {self.current_turn.capitalize()}"
+            
+            # ציור רקע לטקסט
+            cv2.rectangle(self.current_board.img.img, (5, 5), (200, 40), (0, 0, 0), -1)
+            cv2.rectangle(self.current_board.img.img, (5, 5), (200, 40), (255, 255, 255), 2)
+            
             if hasattr(self.current_board.img, 'put_text'):
                 self.current_board.img.put_text(turn_text, 10, 30, 1.0, (255, 255, 255, 255), 2)
+            else:
+                cv2.putText(self.current_board.img.img, turn_text, 
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
+                        1.0, (255, 255, 255), 2)
             
             # מידע על הכלי הנבחר
             selected_piece = None
@@ -477,8 +553,30 @@ class Game:
                 
             if selected_piece:
                 selected_text = f"Selected: {selected_piece.piece_id}"
+                
+                # ציור רקע לטקסט הבחירה
+                cv2.rectangle(self.current_board.img.img, (5, 45), (300, 80), (0, 50, 0), -1)
+                cv2.rectangle(self.current_board.img.img, (5, 45), (300, 80), (0, 255, 0), 2)
+                
                 if hasattr(self.current_board.img, 'put_text'):
-                    self.current_board.img.put_text(selected_text, 10, 60, 0.8, (255, 255, 0, 255), 2)
+                    self.current_board.img.put_text(selected_text, 10, 70, 0.8, (255, 255, 0, 255), 2)
+                else:
+                    cv2.putText(self.current_board.img.img, selected_text, 
+                            (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 
+                            0.8, (255, 255, 0), 2)
+            
+            # הצגת מספר הכלים שנותרו
+            white_pieces = [p for p in self.pieces if self._can_player_control_piece(1, p)]
+            black_pieces = [p for p in self.pieces if self._can_player_control_piece(2, p)]
+            
+            pieces_info = f"White: {len(white_pieces)} | Black: {len(black_pieces)}"
+            
+            if hasattr(self.current_board.img, 'put_text'):
+                self.current_board.img.put_text(pieces_info, 10, 100, 0.6, (200, 200, 200, 255), 1)
+            else:
+                cv2.putText(self.current_board.img.img, pieces_info, 
+                        (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 
+                        0.6, (200, 200, 200), 1)
         except Exception as e:
             print(f"Error drawing game info: {e}")
 
@@ -534,7 +632,6 @@ class Game:
                     except Exception as e:
                         print(f"Error checking collision between pieces: {e}")
                         continue
-            
             # הסרת הכלים שנאכלו
             for piece in pieces_to_remove:
                 if piece in self.pieces:
@@ -549,28 +646,22 @@ class Game:
             if self.game_over:
                 return True
                 
-            # חיפוש מלכים
-            kings = [p for p in self.pieces if "king" in p.piece_id.lower()]
-            
-            if len(kings) <= 1:
-                self.game_over = True
-                if len(kings) == 1:
-                    self.winner = kings[0]
-                elif len(kings) == 0:
-                    self.winner = None  # תיקו
-                return True
-            
             # בדיקה אם נשארו כלים לכל צד
             white_pieces = [p for p in self.pieces if self._can_player_control_piece(1, p)]
             black_pieces = [p for p in self.pieces if self._can_player_control_piece(2, p)]
             
-            if len(white_pieces) == 0:
+            # רק אם אחד הצדדים איבד את כל הכלים
+            if len(white_pieces) == 0 and len(black_pieces) > 0:
                 self.game_over = True
-                self.winner = black_pieces[0] if black_pieces else None
+                self.winner = black_pieces[0]
                 return True
-            elif len(black_pieces) == 0:
+            elif len(black_pieces) == 0 and len(white_pieces) > 0:
                 self.game_over = True
-                self.winner = white_pieces[0] if white_pieces else None
+                self.winner = white_pieces[0]
+                return True
+            elif len(white_pieces) == 0 and len(black_pieces) == 0:
+                self.game_over = True
+                self.winner = None  # תיקו
                 return True
                 
             return False

@@ -1,3 +1,4 @@
+
 import inspect
 import pathlib
 import queue, threading, time, cv2, math
@@ -22,10 +23,10 @@ class Game:
         self.window_name = "Chess Game"
         self.mouse_callback_active = False
         
-        # מצב המשחק
+        # מצב המשחק - הסרת מערכת התורות
         self.winner = None
         self.game_over = False
-        self.current_turn = "white"  # "white" or "black"
+        # self.current_turn = "white"  # הסרנו את זה - כעת אין תורות!
         
         # מיקומי שחקנים
         self.player1_cursor = [0, 0]  # [row, col]
@@ -79,81 +80,83 @@ class Game:
             self.mouse_callback_active = True
 
     def _handle_keyboard_input(self):
-        """Handle keyboard input for both players."""
         key = cv2.waitKey(1) & 0xFF
         
-        if key == 255:  # אין מקש
+        if key == 255:  # No key pressed
             return True
-        
-        # בדיקה איזה שחקן בתור
-        current_player = 1 if self.current_turn == "white" else 2
-        
-        # שחקן 1 (חיצים + Enter) - רק כשזה התור שלו
-        if current_player == 1:
-            if key == 82 or key == ord('w'):  # חץ למעלה או W
-                self.player1_cursor[0] = max(0, self.player1_cursor[0] - 1)
-            elif key == 84 or key == ord('s'):  # חץ למטה או S
-                self.player1_cursor[0] = min(self.board.H_cells - 1, self.player1_cursor[0] + 1)
-            elif key == 81 or key == ord('a'):  # חץ שמאלה או A
-                self.player1_cursor[1] = max(0, self.player1_cursor[1] - 1)
-            elif key == 83 or key == ord('d'):  # חץ ימינה או D
-                self.player1_cursor[1] = min(self.board.W_cells - 1, self.player1_cursor[1] + 1)
-            elif key == 13 or key == ord(' '):  # Enter או רווח
-                self._handle_player_action(1, self.player1_cursor)
-            
-        # שחקן 2 (WASD + רווח) - רק כשזה התור שלו
-        elif current_player == 2:
-            if key == ord('i'):  # I במקום W
-                self.player2_cursor[0] = max(0, self.player2_cursor[0] - 1)
-            elif key == ord('k'):  # K במקום S
-                self.player2_cursor[0] = min(self.board.H_cells - 1, self.player2_cursor[0] + 1)
-            elif key == ord('j'):  # J במקום A
-                self.player2_cursor[1] = max(0, self.player2_cursor[1] - 1)
-            elif key == ord('l'):  # L במקום D
-                self.player2_cursor[1] = min(self.board.W_cells - 1, self.player2_cursor[1] + 1)
-            elif key == ord('u'):  # U לבחירה
-                self._handle_player_action(2, self.player2_cursor)
-        
-        # מקשי יציאה - תמיד פעילים
-        if key == ord('q') or key == 27:  # 'q' או ESC
+
+        # Player 1 (Arrow keys + Enter + 'J' for jump)
+        # Note: Arrow key codes can vary. Consider using a dedicated library for robust input.
+        if key == 2490368:  # Up arrow (Example code, verify on your system)
+            self.player1_cursor[0] = max(0, self.player1_cursor[0] - 1)
+        elif key == 2621440: # Down arrow (Example code)
+            self.player1_cursor[0] = min(self.board.H_cells - 1, self.player1_cursor[0] + 1)
+        elif key == 2424832: # Left arrow (Example code)
+            self.player1_cursor[1] = max(0, self.player1_cursor[1] - 1)
+        elif key == 2555904: # Right arrow (Example code)
+            self.player1_cursor[1] = min(self.board.W_cells - 1, self.player1_cursor[1] + 1)
+        elif key == 13:  # Enter - Regular move
+            self._handle_player_action(1, self.player1_cursor, False)
+        elif key == ord('j'):  # 'j' key for Player 1 jump (Changed from 'z')
+            self._handle_player_action(1, self.player1_cursor, True)
+
+        # Player 2 (WASD + Space + 'K' for jump)
+        elif key == ord('w'):  # W
+            self.player2_cursor[0] = max(0, self.player2_cursor[0] - 1)
+        elif key == ord('s'):  # S
+            self.player2_cursor[0] = min(self.board.H_cells - 1, self.player2_cursor[0] + 1)
+        elif key == ord('a'):  # A
+            self.player2_cursor[1] = max(0, self.player2_cursor[1] - 1)
+        elif key == ord('d'):  # D
+            self.player2_cursor[1] = min(self.board.W_cells - 1, self.player2_cursor[1] + 1)
+        elif key == ord(' '):  # Space - Regular move
+            self._handle_player_action(2, self.player2_cursor, False)
+        elif key == ord('k'):  # 'k' key for Player 2 jump (Changed from 'x')
+            self._handle_player_action(2, self.player2_cursor, True)
+
+        # Exit keys - always active
+        elif key == ord('q') or key == 27:  # 'q' or ESC
             return False
-        
-        # מקש לאיפוס בחירה
-        if key == ord('r'):
+
+        # Key to reset selection
+        elif key == ord('r'):
             self.player1_selected_piece = None
             self.player2_selected_piece = None
             print("Selection reset")
             
         return True
-
-    def _handle_player_action(self, player_num: int, cursor_pos: list):
-        """Handle player action (select piece or move piece)."""
+    
+    def _handle_player_action(self, player_num: int, cursor_pos: list, is_jump: bool = False):
+        """Handle player action (select piece or move piece) - REMOVED TURN CHECK!"""
         row, col = cursor_pos
         piece_at_cursor = self._find_piece_at_cell(row, col)
         
-        # בדיקה שזה התור של השחקן
-        if self.player_colors[player_num] != self.current_turn:
-            print(f"Not your turn! Current turn: {self.current_turn}")
-            return
+        # הסרנו את בדיקת התור - עכשיו כל שחקן יכול לזוז בכל זמן!
         
         if player_num == 1:
             if self.player1_selected_piece is None:
                 # בחירת כלי
                 if piece_at_cursor and self._can_player_control_piece(1, piece_at_cursor):
+                    # בדיקה אם הכלי לא בהשהיה
+                    if self._is_piece_in_cooldown(piece_at_cursor):
+                        print("Piece is in cooldown!")
+                        return
+                    
                     self.player1_selected_piece = piece_at_cursor
                     print(f"Player 1 selected: {piece_at_cursor.piece_id}")
                 else:
                     print("No valid piece to select at this position")
             else:
                 # ניסיון להזיז כלי
-                if self._attempt_move(self.player1_selected_piece, cursor_pos):
+                if self._attempt_move(self.player1_selected_piece, cursor_pos, is_jump):
                     self.player1_selected_piece = None
-                    self._change_turn()
+                    # אין החלפת תור!
                 else:
                     # אם המהלך לא חוקי, בדוק אם רוצים לבחור כלי אחר
                     if piece_at_cursor and self._can_player_control_piece(1, piece_at_cursor):
-                        self.player1_selected_piece = piece_at_cursor
-                        print(f"Player 1 selected: {piece_at_cursor.piece_id}")
+                        if not self._is_piece_in_cooldown(piece_at_cursor):
+                            self.player1_selected_piece = piece_at_cursor
+                            print(f"Player 1 selected: {piece_at_cursor.piece_id}")
                     else:
                         print("Invalid move!")
                         self.player1_selected_piece = None
@@ -162,46 +165,49 @@ class Game:
             if self.player2_selected_piece is None:
                 # בחירת כלי
                 if piece_at_cursor and self._can_player_control_piece(2, piece_at_cursor):
+                    # בדיקה אם הכלי לא בהשהיה
+                    if self._is_piece_in_cooldown(piece_at_cursor):
+                        print("Piece is in cooldown!")
+                        return
+                    
                     self.player2_selected_piece = piece_at_cursor
                     print(f"Player 2 selected: {piece_at_cursor.piece_id}")
                 else:
                     print("No valid piece to select at this position")
             else:
                 # ניסיון להזיז כלי
-                if self._attempt_move(self.player2_selected_piece, cursor_pos):
+                if self._attempt_move(self.player2_selected_piece, cursor_pos, is_jump):
                     self.player2_selected_piece = None
-                    self._change_turn()
+                    # אין החלפת תור!
                 else:
                     # אם המהלך לא חוקי, בדוק אם רוצים לבחור כלי אחר
                     if piece_at_cursor and self._can_player_control_piece(2, piece_at_cursor):
-                        self.player2_selected_piece = piece_at_cursor
-                        print(f"Player 2 selected: {piece_at_cursor.piece_id}")
+                        if not self._is_piece_in_cooldown(piece_at_cursor):
+                            self.player2_selected_piece = piece_at_cursor
+                            print(f"Player 2 selected: {piece_at_cursor.piece_id}")
                     else:
                         print("Invalid move!")
                         self.player2_selected_piece = None
-
-    def _attempt_move(self, piece: Piece, target_pos: list) -> bool:
-        """ניסיון להזיז כלי - מחזיר True אם המהלך בוצע בהצלחה"""
+    def _is_piece_in_cooldown(self, piece: Piece) -> bool:
+        """בדיקה אם הכלי במצב השהיה"""
+        now_ms = self.game_time_ms()
+        # ודא שלכלי יש מאפיין cooldown_end_time. יש לאתחל אותו ב-Piece.
+        # אם אין לו, הוא לעולם לא יהיה ב-cooldown
+        return hasattr(piece, 'cooldown_end_time') and now_ms < piece.cooldown_end_time
+    
+    def _attempt_move(self, piece: Piece, target_pos: list, is_jump: bool = False) -> bool:
+        """ניסיון להזיז כלי - עם תמיכה בקפיצה"""
         now_ms = self.game_time_ms()
         
-        # בדיקה בסיסית של הכלי
-        if not hasattr(piece, 'current_state') or not piece.current_state:
-            print("Piece has no current state!")
+        if not hasattr(piece, 'current_state') or not piece.current_state or \
+           not hasattr(piece.current_state, 'physics') or not piece.current_state.physics:
+            print("Piece has no valid state or physics!")
             return False
             
-        if not hasattr(piece.current_state, 'physics') or not piece.current_state.physics:
-            print("Piece has no physics state!")
+        if self._is_piece_in_cooldown(piece):
+            print(f"{piece.piece_id} is in cooldown, cannot move!")
             return False
-        
-        # בדיקה אם הכלי בקירור (אם יש פונקציה כזאת)
-        if hasattr(piece.current_state.physics, 'can_capture'):
-            try:
-                if not piece.current_state.physics.can_capture(now_ms):
-                    print("Piece is in cooldown, cannot move!")
-                    return False
-            except:
-                pass  # אם הפונקציה לא עובדת, נמשיך
-        
+            
         target_row, target_col = target_pos
         
         try:
@@ -209,37 +215,39 @@ class Game:
         except Exception as e:
             print(f"Error getting piece position: {e}")
             return False
-        
-        # בדיקה בסיסית של תזוזה
+            
         if current_row == target_row and current_col == target_col:
             print("Cannot move to same position!")
             return False
-        
-        # בדיקה אם התזוזה בגבולות הלוח
+            
         if not (0 <= target_row < self.board.H_cells and 0 <= target_col < self.board.W_cells):
             print("Move is out of board bounds!")
             return False
-        
+            
         # בדיקה אם יש כלי יריב במיקום היעד
         target_piece = self._find_piece_at_cell(target_row, target_col)
+        
+        # אם זה לא קפיצה, והיעד תפוס על ידי כלי מאותה קבוצה - לא ניתן לזוז.
+        # אם היעד תפוס על ידי כלי יריב - הוא יילכד, אלא אם הכלי המנסה לזוז קופץ.
         if target_piece:
             if self._is_same_team(piece, target_piece):
                 print("Cannot capture your own piece!")
                 return False
+            elif is_jump:
+                # אם קופצים, מתעלמים מהכלי שביעד בשלב זה.
+                # הטיפול בהתנגשויות בזמן קפיצה יקרה ב- _resolve_collisions.
+                print(f"{piece.piece_id} is attempting to jump over {target_piece.piece_id}.")
             else:
-                print(f"{piece.piece_id} will capture {target_piece.piece_id}")
+                # מהלך רגיל - יילכד
+                print(f"{piece.piece_id} will capture {target_piece.piece_id}.")
+                # חשוב: האכילה בפועל תתבצע רק ב-_resolve_collisions
         
-        # יצירת פקודת תזוזה
-        self._create_move_command(piece, target_pos)
+        self._create_move_command(piece, target_pos, is_jump)
+        
+        # הגדרת זמן השהיה
+        cooldown_duration = 1000 if is_jump else 4000  # 1 שנייה לקפיצה, 4 שניות למהלך רגיל
+        piece.cooldown_end_time = now_ms + cooldown_duration
         return True
-
-    def _change_turn(self):
-        """החלפת תור"""
-        self.current_turn = "black" if self.current_turn == "white" else "white"
-        
-        # פרסום אירוע החלפת תור
-        event = Event("turn_changed", {"new_turn": self.current_turn})
-        self.event_bus.publish(event)
 
     def _can_player_control_piece(self, player_num: int, piece: Piece) -> bool:
         """בדיקה אם השחקן יכול לשלוט בכלי"""
@@ -265,30 +273,40 @@ class Game:
         
         return (p1_white and p2_white) or (p1_black and p2_black)
 
-    def _create_move_command(self, piece: Piece, target_pos: list):
-        """יצירת פקודת תזוזה"""
+    def _create_move_command(self, piece: Piece, target_pos: list, is_jump: bool = False):
+        """יצירת פקודת תזוזה עם תמיכה בקפיצה"""
         try:
             current_r, current_c = piece.current_state.physics.get_cell_pos()
-            
             target_r, target_c = target_pos
             
-            # עדכון ישיר של מיקום הכלי (לדמו)
+            # עדיף לא לעדכן את מיקום הכלי כאן מיד,
+            # אלא רק כאשר הפקודה אכן מבוצעת/מאושרת (לדוגמה, בתוך on_command של הכלי, או בלולאת המשחק הראשית).
+            # לצורך הדגמה זו, אנו משאירים את זה ללא שינוי כרגע, אך זו נקודה לבדיקה נוספת.
             piece.current_state.physics.row = target_r
             piece.current_state.physics.col = target_c
             
-            # המרה לסימון שח
-            current_pos = chr(ord('a') + int(current_c)) + str(int(current_r) + 1)
+            # יש לוודא שמאפיינים אלה קיימים על אובייקט ה-Piece
+            piece.is_jumping = is_jump
+            if is_jump:
+                # זמן סיום הקפיצה - קצר יותר מה-cooldown הרגיל
+                piece.jump_end_time = self.game_time_ms() + 500  # קפיצה נמשכת חצי שנייה
+            else:
+                piece.jump_end_time = 0 # איפוס אם לא קופץ
+            
+            # המרה לסימון שחמט
+            current_pos_chess = chr(ord('a') + int(current_c)) + str(int(current_r) + 1)
             target_chess_pos = chr(ord('a') + target_c) + str(target_r + 1)
             
+            cmd_type = "Jump" if is_jump else "Move"
             cmd = Command(
                 timestamp=self.game_time_ms(),
                 piece_id=piece.piece_id,
-                type="Move",
-                params=[current_pos, target_chess_pos]
+                type=cmd_type,
+                params=[current_pos_chess, target_chess_pos] # שימוש ב-current_pos_chess
             )
             
             self.user_input_queue.put(cmd)
-            print(f"Move command created: {piece.piece_id} from {current_pos} to {target_chess_pos}")
+            print(f"{cmd_type} command created: {piece.piece_id} from {current_pos_chess} to {target_chess_pos}")
         except Exception as e:
             print(f"Error creating move command: {e}")
 
@@ -307,21 +325,29 @@ class Game:
         return None
 
     def run(self):
-        """לולאת המשחק הראשית"""
+        """לולאת המשחק הראשית - ללא בדיקות תור"""
         self.start_user_input_thread()
         start_ms = self.game_time_ms()
         
-        # איפוס כל הכלים
+        # איפוס ודא שכל הכלים מאותחלים עם מאפייני קירור וקפיצה
         for p in self.pieces:
             try:
                 if hasattr(p, 'reset'):
                     p.reset(start_ms)
+                # ודא קיום מאפיינים אלו על אובייקט Piece
+                if not hasattr(p, 'cooldown_end_time'):
+                    p.cooldown_end_time = 0
+                if not hasattr(p, 'is_jumping'):
+                    p.is_jumping = False
+                if not hasattr(p, 'jump_end_time'):
+                    p.jump_end_time = 0
             except Exception as e:
                 print(f"Error resetting piece {p.piece_id}: {e}")
 
-        print(f"Game started! Current turn: {self.current_turn}")
-        print("White player (Player 1): Arrow keys (or WASD) + Enter/Space")
-        print("Black player (Player 2): IJKL + U")
+        print("Simultaneous Chess Game started!")
+        # עדכון הנחיות השחקנים בהתאם למקשים החדשים שהוגדרו
+        print("White player (Player 1): Arrow keys + Enter (move) + J (jump)")
+        print("Black player (Player 2): WASD + Space (move) + K (jump)")
         print("Press 'r' to reset selection, 'q' to quit")
 
         frame_count = 0
@@ -336,7 +362,8 @@ class Game:
                     if hasattr(p, 'update'):
                         p.update(now)
                 except Exception as e:
-                    if frame_count % 300 == 0:  # הדפס רק כל 10 שניות בערך
+                    # הדפסת שגיאות לעיתים רחוקות יותר
+                    if frame_count % (self.target_fps * 10) == 0:  # כל 10 שניות
                         print(f"Error updating piece {p.piece_id}: {e}")
 
             # טיפול בקלט מקלדת
@@ -354,6 +381,12 @@ class Game:
             except Exception as e:
                 print(f"Error processing input: {e}")
 
+            # בדיקת התנגשויות לפני הציור כדי לשקף את המצב העדכני
+            try:
+                self._resolve_collisions()
+            except Exception as e:
+                print(f"Error resolving collisions: {e}")
+
             # ציור
             try:
                 self._draw()
@@ -361,12 +394,6 @@ class Game:
                     break
             except Exception as e:
                 print(f"Error drawing/showing frame: {e}")
-
-            # בדיקת התנגשויות
-            try:
-                self._resolve_collisions()
-            except Exception as e:
-                print(f"Error resolving collisions: {e}")
 
             # FPS control
             elapsed = time.perf_counter() - current_time
@@ -397,7 +424,7 @@ class Game:
                 break
 
     def _draw(self):
-        """ציור המצב הנוכחי"""
+        """ציור המצב הנוכחי - עם תמיכה בקפיצות"""
         try:
             self.current_board = self.clone_board()
             now_ms = self.game_time_ms()
@@ -408,26 +435,24 @@ class Game:
                     if hasattr(piece, 'draw_on_board'):
                         piece.draw_on_board(self.current_board, now_ms)
                     else:
-                        # ציור פשוט לדמו
-                        self._draw_demo_piece(piece)
+                        # ציור פשוט לדמו עם אינדיקציה לקפיצה
+                        self._draw_demo_piece(piece, now_ms)
                 except Exception as e:
                     print(f"Error drawing piece {piece.piece_id}: {e}")
             
-            # ציור סמני השחקנים - רק של השחקן שבתור
-            if self.current_turn == "white":
-                self._draw_cursor(1, self.player1_cursor, (0, 255, 0))  # ירוק לשחקן 1
-            else:
-                self._draw_cursor(2, self.player2_cursor, (0, 0, 255))  # אדום לשחקן 2
+            # ציור סמני השחקנים - כעת תמיד שניהם פעילים
+            self._draw_cursor(1, self.player1_cursor, (0, 255, 0))  # ירוק לשחקן 1
+            self._draw_cursor(2, self.player2_cursor, (0, 0, 255))  # אדום לשחקן 2
             
             # ציור בחירות
-            if self.player1_selected_piece and self.current_turn == "white":
+            if self.player1_selected_piece:
                 try:
                     r, c = self.player1_selected_piece.current_state.physics.get_cell_pos()
                     self._draw_selection(r, c, (0, 255, 255))  # צהוב
                 except Exception as e:
                     print(f"Error drawing player 1 selection: {e}")
                     
-            if self.player2_selected_piece and self.current_turn == "black":
+            if self.player2_selected_piece:
                 try:
                     r, c = self.player2_selected_piece.current_state.physics.get_cell_pos()
                     self._draw_selection(r, c, (255, 0, 255))  # מגנטה
@@ -440,42 +465,64 @@ class Game:
         except Exception as e:
             print(f"Error in draw method: {e}")
 
-    def _draw_demo_piece(self, piece: Piece):
-        """ציור משופר לכלי דמו"""
+    def _draw_demo_piece(self, piece: Piece, now_ms: int):
+        """ציור משופר לכלי דמו עם אינדיקציה לקפיצה וקירור"""
         try:
             r, c = piece.current_state.physics.get_cell_pos()
             x = c * self.current_board.cell_W_pix + 10
             y = r * self.current_board.cell_H_pix + 10
             
-            # צבע לפי השחקן
-            if self._can_player_control_piece(1, piece):
-                color = (255, 255, 255)  # לבן
-                border_color = (200, 200, 200)
-            else:
-                color = (50, 50, 50)  # כמעט שחור
-                border_color = (100, 100, 100)
+            # בדיקה אם הכלי קופץ (השתמש במאפיין is_jumping)
+            is_jumping = hasattr(piece, 'is_jumping') and piece.is_jumping
             
-            # ציור ריבוע עם צללית
+            # בדיקה אם הכלי בהשהיה
+            in_cooldown = self._is_piece_in_cooldown(piece)
+            
+            # צבע לפי השחקן ומצב
+            if self._can_player_control_piece(1, piece):
+                if in_cooldown:
+                    color = (150, 150, 150)  # אפור - בהשהיה
+                    border_color = (100, 100, 100)
+                else:
+                    color = (255, 255, 255)  # לבן
+                    border_color = (200, 200, 200)
+            else:
+                if in_cooldown:
+                    color = (100, 100, 100)  # אפור כהה - בהשהיה
+                    border_color = (50, 50, 50)
+                else:
+                    color = (50, 50, 50)  # כמעט שחור
+                    border_color = (100, 100, 100)
+            
+            # אם קופץ, הזז מעט למעלה וצייר צללית תחתית
+            if is_jumping:
+                y -= 10
+                # הוסף צללית נוספת לקפיצה מתחת למיקום המקורי
+                cv2.circle(self.current_board.img.img, 
+                           (c * self.current_board.cell_W_pix + self.current_board.cell_W_pix // 2, 
+                            r * self.current_board.cell_H_pix + self.current_board.cell_H_pix // 2 + 10), 
+                           25, (0, 0, 0, 100), -1) # צללית עדינה יותר
+            
+            # ציור צללית רגילה (לכל כלי, גם אם הוא קופץ - זו הצללית של הכלי עצמו)
             shadow_offset = 3
             cv2.rectangle(self.current_board.img.img, 
-                        (x + shadow_offset, y + shadow_offset), 
-                        (x + 60 + shadow_offset, y + 60 + shadow_offset), 
-                        (0, 0, 0), -1)
+                          (x + shadow_offset, y + shadow_offset), 
+                          (x + 60 + shadow_offset, y + 60 + shadow_offset), 
+                          (0, 0, 0), -1)
             
             # ציור הכלי עצמו
             cv2.rectangle(self.current_board.img.img, 
-                        (x, y), 
-                        (x + 60, y + 60), 
-                        color, -1)
+                          (x, y), 
+                          (x + 60, y + 60), 
+                          color, -1)
             cv2.rectangle(self.current_board.img.img, 
-                        (x, y), 
-                        (x + 60, y + 60), 
-                        border_color, 2)
-                        
+                          (x, y), 
+                          (x + 60, y + 60), 
+                          border_color, 2)
+                            
             # הוספת טקסט משופר
             piece_name = piece.piece_id
             if "_" in piece_name:
-                # נקח את החלק האחרון של השם
                 piece_type = piece_name.split('_')[0][:2].upper()
             else:
                 piece_type = piece_name[:2].upper()
@@ -484,9 +531,21 @@ class Game:
             text_color = (0, 0, 0) if self._can_player_control_piece(1, piece) else (255, 255, 255)
             
             cv2.putText(self.current_board.img.img, piece_type, 
-                    (x + 15, y + 35), cv2.FONT_HERSHEY_SIMPLEX, 
-                    0.6, text_color, 2)
-                    
+                        (x + 15, y + 35), cv2.FONT_HERSHEY_SIMPLEX, 
+                        0.6, text_color, 2)
+                            
+            # אינדיקטור קפיצה
+            if is_jumping:
+                cv2.putText(self.current_board.img.img, "J", 
+                            (x + 45, y + 15), cv2.FONT_HERSHEY_SIMPLEX, 
+                            0.5, (255, 255, 0), 2)
+                            
+            # אינדיקטור השהיה
+            if in_cooldown:
+                cv2.putText(self.current_board.img.img, "CD", 
+                            (x + 5, y + 55), cv2.FONT_HERSHEY_SIMPLEX, 
+                            0.4, (255, 0, 0), 1)
+                        
         except Exception as e:
             print(f"Error drawing demo piece: {e}")
 
@@ -528,55 +587,48 @@ class Game:
             print(f"Error drawing selection: {e}")
 
     def _draw_game_info(self):
-        """ציור מידע משופר על המשחק - להחליף בקלאס Game"""
+        """ציור מידע משופר על המשחק - ללא מידע על תור"""
         try:
-            # מידע על התור הנוכחי עם רקע
-            turn_text = f"Turn: {self.current_turn.capitalize()}"
+            # מידע כללי על המשחק
+            game_text = "Simultaneous Chess Game"
             
             # ציור רקע לטקסט
-            cv2.rectangle(self.current_board.img.img, (5, 5), (200, 40), (0, 0, 0), -1)
-            cv2.rectangle(self.current_board.img.img, (5, 5), (200, 40), (255, 255, 255), 2)
+            cv2.rectangle(self.current_board.img.img, (5, 5), (250, 40), (0, 0, 0), -1)
+            cv2.rectangle(self.current_board.img.img, (5, 5), (250, 40), (255, 255, 255), 2)
             
             if hasattr(self.current_board.img, 'put_text'):
-                self.current_board.img.put_text(turn_text, 10, 30, 1.0, (255, 255, 255, 255), 2)
+                self.current_board.img.put_text(game_text, 10, 30, 0.8, (255, 255, 255, 255), 2)
             else:
-                cv2.putText(self.current_board.img.img, turn_text, 
+                cv2.putText(self.current_board.img.img, game_text, 
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
-                        1.0, (255, 255, 255), 2)
+                        0.8, (255, 255, 255), 2)
             
-            # מידע על הכלי הנבחר
-            selected_piece = None
-            if self.current_turn == "white" and self.player1_selected_piece:
-                selected_piece = self.player1_selected_piece
-            elif self.current_turn == "black" and self.player2_selected_piece:
-                selected_piece = self.player2_selected_piece
+            # מידע על הכלים הנבחרים
+            y_offset = 45
+            if self.player1_selected_piece:
+                selected_text = f"P1: {self.player1_selected_piece.piece_id}"
+                cv2.rectangle(self.current_board.img.img, (5, y_offset), (200, y_offset + 25), (0, 0, 50), -1)
+                cv2.putText(self.current_board.img.img, selected_text, 
+                        (10, y_offset + 20), cv2.FONT_HERSHEY_SIMPLEX, 
+                        0.6, (255, 255, 0), 2)
+                y_offset += 30
                 
-            if selected_piece:
-                selected_text = f"Selected: {selected_piece.piece_id}"
-                
-                # ציור רקע לטקסט הבחירה
-                cv2.rectangle(self.current_board.img.img, (5, 45), (300, 80), (0, 50, 0), -1)
-                cv2.rectangle(self.current_board.img.img, (5, 45), (300, 80), (0, 255, 0), 2)
-                
-                if hasattr(self.current_board.img, 'put_text'):
-                    self.current_board.img.put_text(selected_text, 10, 70, 0.8, (255, 255, 0, 255), 2)
-                else:
-                    cv2.putText(self.current_board.img.img, selected_text, 
-                            (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 
-                            0.8, (255, 255, 0), 2)
+            if self.player2_selected_piece:
+                selected_text = f"P2: {self.player2_selected_piece.piece_id}"
+                cv2.rectangle(self.current_board.img.img, (5, y_offset), (200, y_offset + 25), (50, 0, 0), -1)
+                cv2.putText(self.current_board.img.img, selected_text, 
+                        (10, y_offset + 20), cv2.FONT_HERSHEY_SIMPLEX, 
+                        0.6, (0, 255, 255), 2)
+                y_offset += 30
             
             # הצגת מספר הכלים שנותרו
             white_pieces = [p for p in self.pieces if self._can_player_control_piece(1, p)]
             black_pieces = [p for p in self.pieces if self._can_player_control_piece(2, p)]
             
             pieces_info = f"White: {len(white_pieces)} | Black: {len(black_pieces)}"
-            
-            if hasattr(self.current_board.img, 'put_text'):
-                self.current_board.img.put_text(pieces_info, 10, 100, 0.6, (200, 200, 200, 255), 1)
-            else:
-                cv2.putText(self.current_board.img.img, pieces_info, 
-                        (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 
-                        0.6, (200, 200, 200), 1)
+            cv2.putText(self.current_board.img.img, pieces_info, 
+                    (10, y_offset + 20), cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.6, (200, 200, 200), 1)
         except Exception as e:
             print(f"Error drawing game info: {e}")
 
@@ -597,48 +649,88 @@ class Game:
             return False
 
     def _resolve_collisions(self):
-        """פתרון התנגשויות ואכילות"""
-        try:
-            now_ms = self.game_time_ms()
-            pieces_to_remove = []
+        """פתרון התנגשויות ואכילות - עם תמיכה בקפיצות"""
+        now_ms = self.game_time_ms()
+        pieces_to_remove = []
+        
+        # שלב 1: עדכון סטטוס קפיצה של כל הכלים
+        for piece in self.pieces:
+            if hasattr(piece, 'is_jumping') and piece.is_jumping and \
+               hasattr(piece, 'jump_end_time') and now_ms >= piece.jump_end_time:
+                piece.is_jumping = False
+                #print(f"{piece.piece_id} finished jumping.")
+        
+        # שלב 2: בדיקת התנגשויות
+        # יצירת רשימה של מיקומי כלים ומי שהתחיל לזוז אחרון (לצורך "הראשון מנצח")
+        piece_positions: Dict[Tuple[int, int], List[Piece]] = {}
+        for piece in self.pieces:
+            if not hasattr(piece, 'current_state') or not piece.current_state or \
+               not hasattr(piece.current_state, 'physics'):
+                continue
             
-            for i, piece1 in enumerate(self.pieces):
-                if not hasattr(piece1, 'current_state') or not piece1.current_state:
-                    continue
-                    
-                for piece2 in self.pieces[i+1:]:
-                    if not hasattr(piece2, 'current_state') or not piece2.current_state:
-                        continue
-                        
-                    try:
-                        r1, c1 = piece1.current_state.physics.get_cell_pos()
-                        r2, c2 = piece2.current_state.physics.get_cell_pos()
-                        
-                        # בדיקת התנגשות (אותו ריבוע)
-                        if r1 == r2 and c1 == c2 and not self._is_same_team(piece1, piece2):
-                            # לוגיקת אכילה פשוטה - הכלי השני נאכל
-                            pieces_to_remove.append(piece2)
-                            
-                            print(f"{piece1.piece_id} captured {piece2.piece_id}")
-                            
-                            # פרסום אירוע אכילה
-                            event = Event("piece_captured", {
-                                "captured_piece": piece2.piece_id,
-                                "capturing_piece": piece1.piece_id,
-                                "position": (r1, c1)
-                            })
-                            self.event_bus.publish(event)
-                            break
-                    except Exception as e:
-                        print(f"Error checking collision between pieces: {e}")
-                        continue
-            # הסרת הכלים שנאכלו
-            for piece in pieces_to_remove:
-                if piece in self.pieces:
-                    self.pieces.remove(piece)
-                    
-        except Exception as e:
-            print(f"Error resolving collisions: {e}")
+            r, c = piece.current_state.physics.get_cell_pos()
+            # כלים קופצים אינם נמצאים על הלוח לצורך התנגשויות רגילות
+            if hasattr(piece, 'is_jumping') and piece.is_jumping:
+                continue
+            
+            if (r, c) not in piece_positions:
+                piece_positions[(r, c)] = []
+            piece_positions[(r, c)].append(piece)
+
+        for pos, occupying_pieces in piece_positions.items():
+            if len(occupying_pieces) > 1:
+                # יש התנגשות בריבוע זה
+                colliding_rival_pieces = [p for p in occupying_pieces if not self._can_player_control_piece(self._get_player_num_for_piece(occupying_pieces[0]), p)]
+                
+                # אם יש יותר מכלי אחד באותה משבצת ואין קפיצה
+                # צריך למצוא את הכלי שהתחיל לזוז ראשון (זה שתוקף)
+                # נניח ש-last_move_timestamp קיים על ה-Piece
+                
+                # לוגיקה זמנית: הכלי עם ה-last_move_timestamp המאוחר ביותר (הכי "חדש" בתנועה) מנצח
+                # זהו יישום פשוט של "הכלי שהתחיל לזוז ראשון מנצח" אם נניח ש timestamp זה רגע התחלת המהלך.
+                
+                winner_piece: Optional[Piece] = None
+                latest_move_time = -1
+
+                for piece in occupying_pieces:
+                    # ודא שלכל כלי יש last_move_timestamp
+                    if hasattr(piece, 'last_move_timestamp') and piece.last_move_timestamp > latest_move_time:
+                        winner_piece = piece
+                        latest_move_time = piece.last_move_timestamp
+                
+                if winner_piece:
+                    for piece_to_check in occupying_pieces:
+                        if piece_to_check != winner_piece and not self._is_same_team(winner_piece, piece_to_check):
+                            if piece_to_check not in pieces_to_remove: # למנוע הסרה כפולה
+                                pieces_to_remove.append(piece_to_check)
+                                print(f"{winner_piece.piece_id} captured {piece_to_check.piece_id}")
+                                event = Event("piece_captured", {
+                                    "captured_piece": piece_to_check.piece_id,
+                                    "capturing_piece": winner_piece.piece_id,
+                                    "position": pos
+                                })
+                                self.event_bus.publish(event)
+        
+        # הסרת הכלים שנאכלו
+        for piece in pieces_to_remove:
+            if piece in self.pieces:
+                # לפני הסרה, וודא שלא היה כלי נבחר זה.
+                if self.player1_selected_piece == piece:
+                    self.player1_selected_piece = None
+                if self.player2_selected_piece == piece:
+                    self.player2_selected_piece = None
+                self.pieces.remove(piece)
+                
+        # בדיקת תנאי ניצחון
+        self._check_game_end_conditions()
+
+    def _get_player_num_for_piece(self, piece: Piece) -> int:
+        """פונקציית עזר למציאת מספר השחקן השולט בכלי"""
+        if self._can_player_control_piece(1, piece):
+            return 1
+        elif self._can_player_control_piece(2, piece):
+            return 2
+        return 0 # כלי ניטרלי או לא מזוהה
 
     def _is_win(self) -> bool:
         """בדיקת תנאי ניצחון"""
